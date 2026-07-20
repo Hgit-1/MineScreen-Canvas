@@ -1,0 +1,145 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+    id 'net.neoforged.moddev' version '1.0.21'
+}
+
+version = mod_version
+group = mod_group_id
+
+base {
+    archivesName = mod_id
+}
+
+repositories {
+    // Keep local artifacts first for offline development, then strictly route third-party groups.
+    mavenLocal()
+    exclusiveContent {
+        forRepository {
+            mavenCentral()
+        }
+        filter {
+            includeGroup 'org.bytedeco'
+        }
+    }
+    exclusiveContent {
+        forRepository {
+            maven { url = 'https://mcef-download.cinemamod.com/repositories/releases' }
+        }
+        filter {
+            includeGroup 'com.cinemamod'
+        }
+    }
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+neoForge {
+    version = project.neo_version
+
+    runs {
+        client {
+            client()
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+        }
+        server {
+            server()
+            programArgument '--nogui'
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+        }
+        data {
+            data()
+            programArguments.addAll '--mod', project.mod_id, '--all', '--output', file('src/generated/resources/').getAbsolutePath(), '--existing', file('src/main/resources/').getAbsolutePath()
+        }
+        configureEach {
+            systemProperty 'forge.logging.markers', 'REGISTRIES'
+            logLevel = org.slf4j.event.Level.DEBUG
+        }
+    }
+
+    mods {
+        "${mod_id}" {
+            sourceSet(sourceSets.main)
+        }
+    }
+}
+
+sourceSets.main.resources { srcDir 'src/generated/resources' }
+
+dependencies {
+    // Keep the requested JavaCPP platform coordinate/version, but do not pull every OS/CPU native
+    // bundle into a single development install. The API jar is platform-neutral and this MVP ships
+    // the Windows x64 natives used by the first validation target. Additional classifiers can be
+    // added without changing the decoder abstraction.
+    implementation('org.bytedeco:ffmpeg-platform:7.1-1.5.11') { transitive = false }
+    implementation 'org.bytedeco:ffmpeg:7.1-1.5.11'
+    runtimeOnly 'org.bytedeco:ffmpeg:7.1-1.5.11:windows-x86_64'
+    runtimeOnly 'org.bytedeco:javacpp:1.5.11:windows-x86_64'
+    // NeoForge nested jars make the released Windows MVP self-contained. MCEF remains external.
+    jarJar('org.bytedeco:ffmpeg:7.1-1.5.11') { transitive = false }
+    jarJar('org.bytedeco:javacpp:1.5.11') { transitive = false }
+    jarJar('org.bytedeco:ffmpeg:7.1-1.5.11:windows-x86_64') { transitive = false }
+    jarJar('org.bytedeco:javacpp:1.5.11:windows-x86_64') { transitive = false }
+
+    // MCEF is a required client mod, not shaded into MineScreen. The common artifact exposes its API;
+    // the NeoForge artifact is present in development runs and is installed separately by end users.
+    compileOnly 'com.cinemamod:mcef:2.1.6-1.21.1'
+}
+
+neoForge.runs.named('client') {
+    additionalRuntimeClasspathConfiguration.dependencies.add(
+            project.dependencies.create('com.cinemamod:mcef-neoforge:2.1.6-1.21.1'))
+}
+
+def generateModMetadata = tasks.register('generateModMetadata', ProcessResources) {
+    def replaceProperties = [
+            minecraft_version      : minecraft_version,
+            minecraft_version_range: minecraft_version_range,
+            neo_version            : neo_version,
+            neo_version_range      : neo_version_range,
+            loader_version_range   : loader_version_range,
+            mod_id                 : mod_id,
+            mod_name               : mod_name,
+            mod_license            : mod_license,
+            mod_version            : mod_version,
+            mod_authors            : mod_authors,
+            mod_description        : mod_description
+    ]
+    inputs.properties replaceProperties
+    expand replaceProperties
+    from 'src/main/templates'
+    into 'build/generated/sources/modMetadata'
+}
+sourceSets.main.resources.srcDir generateModMetadata
+neoForge.ideSyncTask generateModMetadata
+
+publishing {
+    publications {
+        register('mavenJava', MavenPublication) {
+            from components.java
+        }
+    }
+    repositories {
+        maven { url = "file://${project.projectDir}/repo" }
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.compilerArgs.add('-Xlint:deprecation')
+}
+
+tasks.named('wrapper', Wrapper).configure {
+    distributionType = Wrapper.DistributionType.BIN
+    gradleVersion = '8.9'
+}
+
+tasks.register('tightDecoderTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.minescreen.client.vnc.TightDecoderTestHarness'
+}
+
+tasks.named('check').configure {
+    dependsOn tasks.named('tightDecoderTest')
+}

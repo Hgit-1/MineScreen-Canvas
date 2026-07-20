@@ -1,0 +1,60 @@
+{
+  "ambientocclusion": false,
+  "textures": {
+    "chassis": "minescreen:block/controller_chassis",
+    "panel": "minescreen:block/controller_panel",
+    "bezel": "minescreen:block/controller_bezel",
+    "controls": "minescreen:block/controller_controls",
+    "particle": "#chassis"
+  },
+  "elements": [
+    {
+      "from": [2, 0, 3], "to": [5, 1, 6],
+      "faces": {"down":{"texture":"#chassis"},"up":{"texture":"#chassis"},"north":{"texture":"#chassis"},"south":{"texture":"#chassis"},"west":{"texture":"#chassis"},"east":{"texture":"#chassis"}}
+    },
+    {
+      "from": [11, 0, 3], "to": [14, 1, 6],
+      "faces": {"down":{"texture":"#chassis"},"up":{"texture":"#chassis"},"north":{"texture":"#chassis"},"south":{"texture":"#chassis"},"west":{"texture":"#chassis"},"east":{"texture":"#chassis"}}
+    },
+    {
+      "from": [2, 0, 10], "to": [5, 1, 13],
+      "faces": {"down":{"texture":"#chassis"},"up":{"texture":"#chassis"},"north":{"texture":"#chassis"},"south":{"texture":"#chassis"},"west":{"texture":"#chassis"},"east":{"texture":"#chassis"}}
+    },
+    {
+      "from": [11, 0, 10], "to": [14, 1, 13],
+      "faces": {"down":{"texture":"#chassis"},"up":{"texture":"#chassis"},"north":{"texture":"#chassis"},"south":{"texture":"#chassis"},"west":{"texture":"#chassis"},"east":{"texture":"#chassis"}}
+    },
+    {
+      "from": [1, 1, 2], "to": [15, 4, 14],
+      "faces": {"down":{"texture":"#chassis"},"up":{"texture":"#panel"},"north":{"texture":"#controls"},"south":{"texture":"#panel"},"west":{"texture":"#chassis"},"east":{"texture":"#chassis"}}
+    },
+    {
+      "from": [1, 4, 2], "to": [15, 15, 5],
+      "faces": {"down":{"texture":"#chassis"},"up":{"texture":"#chassis"},"north":{"texture":"#bezel"},"south":{"texture":"#panel"},"west":{"texture":"#chassis"},"east":{"texture":"#chassis"}}
+    },
+    {
+      "from": [2, 5, 1.875], "to": [14, 14, 2],
+      "faces": {"north":{"texture":"#bezel"},"south":{"texture":"#bezel"},"west":{"texture":"#bezel"},"east":{"texture":"#bezel"},"up":{"texture":"#bezel"},"down":{"texture":"#bezel"}}
+    },
+    {
+      "from": [0.5, 5, 2.5], "to": [1.5, 14, 4.5],
+      "faces": {"down":{"texture":"#chassis"},"up":{"texture":"#chassis"},"north":{"texture":"#chassis"},"south":{"texture":"#panel"},"west":{"texture":"#chassis"},"east":{"texture":"#chassis"}}
+    },
+    {
+      "from": [14.5, 5, 2.5], "to": [15.5, 14, 4.5],
+      "faces": {"down":{"texture":"#chassis"},"up":{"texture":"#chassis"},"north":{"texture":"#chassis"},"south":{"texture":"#panel"},"west":{"texture":"#chassis"},"east":{"texture":"#chassis"}}
+    },
+    {
+      "from": [2.5, 4, 7], "to": [4.5, 5, 9],
+      "faces": {"down":{"texture":"#controls"},"up":{"texture":"#controls"},"north":{"texture":"#controls"},"south":{"texture":"#controls"},"west":{"texture":"#controls"},"east":{"texture":"#controls"}}
+    },
+    {
+      "from": [6, 4, 7], "to": [10, 4.75, 9],
+      "faces": {"down":{"texture":"#controls"},"up":{"texture":"#controls"},"north":{"texture":"#controls"},"south":{"texture":"#controls"},"west":{"texture":"#controls"},"east":{"texture":"#controls"}}
+    },
+    {
+      "from": [11.5, 4, 7], "to": [13.5, 5, 9],
+      "faces": {"down":{"texture":"#controls"},"up":{"texture":"#controls"},"north":{"texture":"#controls"},"south":{"texture":"#controls"},"west":{"texture":"#controls"},"east":{"texture":"#controls"}}
+    }
+  ]
+}

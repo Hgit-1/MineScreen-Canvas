@@ -1,0 +1,6 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": ["III", "RRR", " I "],
+  "key": {"I":{"item":"minecraft:iron_nugget"}, "R":{"item":"minecraft:redstone"}},
+  "result": {"id":"minescreen:keyboard", "count":1}
+}

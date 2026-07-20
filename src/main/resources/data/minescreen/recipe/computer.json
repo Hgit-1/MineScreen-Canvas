@@ -1,0 +1,6 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": ["IGI", "RQR", "III"],
+  "key": {"I":{"item":"minecraft:iron_ingot"}, "G":{"item":"minecraft:glass_pane"}, "R":{"item":"minecraft:redstone"}, "Q":{"item":"minecraft:quartz"}},
+  "result": {"id":"minescreen:computer", "count":1}
+}

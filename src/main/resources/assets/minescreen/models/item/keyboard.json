@@ -1,0 +1,25 @@
+{
+  "ambientocclusion": false,
+  "gui_light": "front",
+  "textures": {
+    "base": "minescreen:block/keyboard_base",
+    "keys": "minescreen:block/keyboard_keys",
+    "accent": "minescreen:block/keyboard_accent",
+    "particle": "#base"
+  },
+  "display": {
+    "gui": {"rotation":[30,225,0],"translation":[0,1,0],"scale":[0.9,0.9,0.9]},
+    "firstperson_righthand": {"rotation":[45,225,0],"translation":[0,3,1],"scale":[0.65,0.65,0.65]},
+    "firstperson_lefthand": {"rotation":[45,135,0],"translation":[0,3,1],"scale":[0.65,0.65,0.65]},
+    "thirdperson_righthand": {"rotation":[65,225,0],"translation":[0,2,1],"scale":[0.55,0.55,0.55]},
+    "thirdperson_lefthand": {"rotation":[65,135,0],"translation":[0,2,1],"scale":[0.55,0.55,0.55]},
+    "ground": {"translation":[0,2,0],"scale":[0.55,0.55,0.55]},
+    "fixed": {"rotation":[90,0,0],"scale":[0.75,0.75,0.75]}
+  },
+  "elements": [
+    {"from":[1,5,2],"to":[15,7,14],"faces":{"down":{"texture":"#base"},"up":{"texture":"#base"},"north":{"texture":"#accent"},"south":{"texture":"#base"},"west":{"texture":"#base"},"east":{"texture":"#base"}}},
+    {"from":[2,7,6],"to":[14,8.5,13],"faces":{"down":{"texture":"#base"},"up":{"texture":"#keys"},"north":{"texture":"#base"},"south":{"texture":"#base"},"west":{"texture":"#base"},"east":{"texture":"#base"}}},
+    {"from":[3,7,3],"to":[11,7.5,5],"faces":{"down":{"texture":"#accent"},"up":{"texture":"#accent"},"north":{"texture":"#accent"},"south":{"texture":"#accent"},"west":{"texture":"#accent"},"east":{"texture":"#accent"}}},
+    {"from":[12,7,3],"to":[14,8,5],"faces":{"down":{"texture":"#accent"},"up":{"texture":"#accent"},"north":{"texture":"#accent"},"south":{"texture":"#accent"},"west":{"texture":"#accent"},"east":{"texture":"#accent"}}}
+  ]
+}

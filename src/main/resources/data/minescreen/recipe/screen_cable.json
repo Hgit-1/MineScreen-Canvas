@@ -1,0 +1,6 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": ["CCC", "RRR", "CCC"],
+  "key": {"C":{"item":"minecraft:copper_ingot"}, "R":{"item":"minecraft:redstone"}},
+  "result": {"id":"minescreen:screen_cable", "count":8}
+}

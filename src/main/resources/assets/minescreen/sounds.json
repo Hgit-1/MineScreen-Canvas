@@ -1,0 +1,11 @@
+{
+  "video_audio": {
+    "sounds": [
+      {
+        "name": "minescreen:video_audio_stream",
+        "stream": true,
+        "attenuation_distance": 96
+      }
+    ]
+  }
+}

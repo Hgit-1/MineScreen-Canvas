@@ -1,0 +1,11 @@
+{
+  "multipart": [
+    {"apply": {"model": "minescreen:block/screen_cable_core"}},
+    {"when": {"north": "true"}, "apply": {"model": "minescreen:block/screen_cable_arm", "uvlock": true}},
+    {"when": {"east": "true"}, "apply": {"model": "minescreen:block/screen_cable_arm", "y": 90, "uvlock": true}},
+    {"when": {"south": "true"}, "apply": {"model": "minescreen:block/screen_cable_arm", "y": 180, "uvlock": true}},
+    {"when": {"west": "true"}, "apply": {"model": "minescreen:block/screen_cable_arm", "y": 270, "uvlock": true}},
+    {"when": {"up": "true"}, "apply": {"model": "minescreen:block/screen_cable_arm", "x": 90, "uvlock": true}},
+    {"when": {"down": "true"}, "apply": {"model": "minescreen:block/screen_cable_arm", "x": 270, "uvlock": true}}
+  ]
+}

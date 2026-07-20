@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": {"model": "minescreen:block/fixed_keyboard"},
+    "facing=east": {"model": "minescreen:block/fixed_keyboard", "y": 90},
+    "facing=south": {"model": "minescreen:block/fixed_keyboard", "y": 180},
+    "facing=west": {"model": "minescreen:block/fixed_keyboard", "y": 270}
+  }
+}

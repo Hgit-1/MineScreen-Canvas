@@ -1,0 +1,6 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [" K ", "SIS"],
+  "key": {"K":{"item":"minescreen:keyboard"}, "S":{"item":"minecraft:smooth_stone_slab"}, "I":{"item":"minecraft:iron_ingot"}},
+  "result": {"id":"minescreen:fixed_keyboard", "count":1}
+}

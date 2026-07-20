@@ -1,0 +1,23 @@
+{
+  "ambientocclusion": false,
+  "textures": {
+    "face": "minescreen:block/screen_face",
+    "edge": "minescreen:block/screen_edge",
+    "back": "minescreen:block/screen_back",
+    "particle": "#back"
+  },
+  "elements": [
+    {
+      "from": [0, 0, 0.5], "to": [16, 16, 2.5],
+      "faces": {"down":{"texture":"#edge"},"up":{"texture":"#edge"},"north":{"texture":"#face"},"south":{"texture":"#back"},"west":{"texture":"#edge"},"east":{"texture":"#edge"}}
+    },
+    {
+      "from": [1, 1, 2.5], "to": [15, 15, 3.25],
+      "faces": {"down":{"texture":"#edge"},"up":{"texture":"#edge"},"north":{"texture":"#back"},"south":{"texture":"#back"},"west":{"texture":"#edge"},"east":{"texture":"#edge"}}
+    },
+    {
+      "from": [6, 6, 3.25], "to": [10, 10, 4],
+      "faces": {"down":{"texture":"#edge"},"up":{"texture":"#edge"},"north":{"texture":"#back"},"south":{"texture":"#back"},"west":{"texture":"#edge"},"east":{"texture":"#edge"}}
+    }
+  ]
+}
