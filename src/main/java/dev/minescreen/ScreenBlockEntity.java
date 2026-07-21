@@ -92,7 +92,7 @@ public final class ScreenBlockEntity extends BlockEntity {
     }
 
     public Vec3 screenUp() {
-        return new Vec3(0, 1, 0);
+        return ScreenGeometry.up(facing());
     }
 
     public Vec3 screenNormal() {

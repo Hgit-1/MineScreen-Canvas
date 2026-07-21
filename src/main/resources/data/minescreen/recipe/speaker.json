@@ -1,0 +1,6 @@
+{
+  "type":"minecraft:crafting_shaped",
+  "pattern":["INI","RWR","III"],
+  "key":{"I":{"item":"minecraft:iron_ingot"},"N":{"item":"minecraft:note_block"},"R":{"item":"minecraft:redstone"},"W":{"item":"minecraft:white_wool"}},
+  "result":{"id":"minescreen:speaker","count":1}
+}

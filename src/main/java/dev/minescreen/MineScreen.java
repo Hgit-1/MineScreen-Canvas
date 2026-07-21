@@ -21,7 +21,10 @@ import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
-/** Common entry point. Client-only rendering classes are loaded from ClientEvents. */
+/**
+ * Common entry point for MineScreen. WebDisplays is the behavioral/feature reference for the
+ * ongoing 1.21.1 port effort, while MineScreen keeps its own name and registry namespace.
+ */
 @Mod(MineScreen.MOD_ID)
 public final class MineScreen {
     public static final String MOD_ID = "minescreen";
@@ -41,6 +44,9 @@ public final class MineScreen {
     public static final DeferredHolder<Block, ScreenCableBlock> SCREEN_CABLE_BLOCK = BLOCKS.register(
             "screen_cable", () -> new ScreenCableBlock(BlockBehaviour.Properties.of()
                     .mapColor(MapColor.COLOR_ORANGE).strength(0.8F).noOcclusion()));
+    public static final DeferredHolder<Block, SpeakerBlock> SPEAKER_BLOCK = BLOCKS.register(
+            "speaker", () -> new SpeakerBlock(BlockBehaviour.Properties.of()
+                    .mapColor(MapColor.COLOR_BLACK).strength(2.0F).requiresCorrectToolForDrops().noOcclusion()));
     public static final DeferredHolder<Block, FixedKeyboardBlock> FIXED_KEYBOARD_BLOCK = BLOCKS.register(
             "fixed_keyboard", () -> new FixedKeyboardBlock(BlockBehaviour.Properties.of()
                     .mapColor(MapColor.COLOR_BLACK).strength(1.5F).noOcclusion()));
@@ -51,12 +57,16 @@ public final class MineScreen {
             "screen", () -> new BlockItem(SCREEN_BLOCK.get(), new Item.Properties()));
     public static final DeferredHolder<Item, BlockItem> SCREEN_CABLE_ITEM = ITEMS.register(
             "screen_cable", () -> new BlockItem(SCREEN_CABLE_BLOCK.get(), new Item.Properties()));
+    public static final DeferredHolder<Item, BlockItem> SPEAKER_ITEM = ITEMS.register(
+            "speaker", () -> new BlockItem(SPEAKER_BLOCK.get(), new Item.Properties()));
     public static final DeferredHolder<Item, BlockItem> FIXED_KEYBOARD_ITEM = ITEMS.register(
             "fixed_keyboard", () -> new BlockItem(FIXED_KEYBOARD_BLOCK.get(), new Item.Properties()));
     public static final DeferredHolder<Item, BlockItem> COMPUTER_ITEM = ITEMS.register(
             "computer", () -> new BlockItem(COMPUTER_BLOCK.get(), new Item.Properties()));
     public static final DeferredHolder<Item, KeyboardItem> KEYBOARD_ITEM = ITEMS.register(
             "keyboard", () -> new KeyboardItem(new Item.Properties().stacksTo(1)));
+    public static final DeferredHolder<Item, Item> SCREEN_CONFIGURATOR_ITEM = ITEMS.register(
+            "screen_configurator", () -> new Item(new Item.Properties().stacksTo(1)));
     public static final DeferredHolder<net.minecraft.world.level.block.entity.BlockEntityType<?>,
             net.minecraft.world.level.block.entity.BlockEntityType<ScreenBlockEntity>> SCREEN_BLOCK_ENTITY =
             BLOCK_ENTITY_TYPES.register("screen", () -> net.minecraft.world.level.block.entity.BlockEntityType.Builder
@@ -73,9 +83,11 @@ public final class MineScreen {
                     .displayItems((parameters, output) -> {
                         output.accept(SCREEN_ITEM.get());
                         output.accept(SCREEN_CABLE_ITEM.get());
+                        output.accept(SPEAKER_ITEM.get());
                         output.accept(FIXED_KEYBOARD_ITEM.get());
                         output.accept(COMPUTER_ITEM.get());
                         output.accept(KEYBOARD_ITEM.get());
+                        output.accept(SCREEN_CONFIGURATOR_ITEM.get());
                     })
                     .build());
     public static final DeferredHolder<SoundEvent, SoundEvent> VIDEO_AUDIO = SOUND_EVENTS.register(
@@ -104,9 +116,11 @@ public final class MineScreen {
         if (event.getTabKey() == CreativeModeTabs.BUILDING_BLOCKS) {
             event.accept(SCREEN_ITEM.get());
             event.accept(SCREEN_CABLE_ITEM.get());
+            event.accept(SPEAKER_ITEM.get());
             event.accept(FIXED_KEYBOARD_ITEM.get());
             event.accept(COMPUTER_ITEM.get());
             event.accept(KEYBOARD_ITEM.get());
+            event.accept(SCREEN_CONFIGURATOR_ITEM.get());
         }
     }
 }

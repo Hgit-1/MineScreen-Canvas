@@ -31,6 +31,13 @@ public final class ScreenRenderType {
         }
     }
 
+    /** Drops a short-lived DynamicTexture RenderType when a WEB status surface closes. */
+    public static void release(ResourceLocation texture) {
+        if (texture != null) {
+            CACHE.remove(texture);
+        }
+    }
+
     private static RenderType create(ResourceLocation texture) {
         RenderType.CompositeState state = RenderType.CompositeState.builder()
                 .setShaderState(new RenderStateShard.ShaderStateShard(

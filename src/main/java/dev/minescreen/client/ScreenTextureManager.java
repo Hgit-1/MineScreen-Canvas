@@ -18,6 +18,8 @@ public final class ScreenTextureManager {
     private static final int HEIGHT = 288;
     private static final ResourceLocation IDLE_TEXTURE =
             ResourceLocation.fromNamespaceAndPath(MineScreen.MOD_ID, "dynamic/idle_pattern");
+    private static final ResourceLocation BLACK_TEXTURE =
+            ResourceLocation.fromNamespaceAndPath(MineScreen.MOD_ID, "dynamic/powered_off");
     private static volatile boolean initialized;
 
     private ScreenTextureManager() {
@@ -34,6 +36,11 @@ public final class ScreenTextureManager {
     public static ScreenRenderSource idleRenderSource() {
         return new ScreenRenderSource(ScreenRenderType.screen(IDLE_TEXTURE),
                 () -> RenderSystem.setShaderTexture(0, IDLE_TEXTURE));
+    }
+
+    public static ScreenRenderSource blackRenderSource() {
+        return new ScreenRenderSource(ScreenRenderType.screen(BLACK_TEXTURE),
+                () -> RenderSystem.setShaderTexture(0, BLACK_TEXTURE));
     }
 
     public static void initialize() {
@@ -67,6 +74,9 @@ public final class ScreenTextureManager {
         drawWord(image, "IDLE", WIDTH / 2, HEIGHT / 2, 9, rgba(255, 221, 59));
 
         textureManager.register(IDLE_TEXTURE, new DynamicTexture(image));
+        NativeImage black = new NativeImage(NativeImage.Format.RGBA, 1, 1, false);
+        black.setPixelRGBA(0, 0, rgba(0, 0, 0));
+        textureManager.register(BLACK_TEXTURE, new DynamicTexture(black));
         initialized = true;
     }
 

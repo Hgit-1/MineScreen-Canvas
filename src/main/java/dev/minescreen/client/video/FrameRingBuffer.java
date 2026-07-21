@@ -40,6 +40,12 @@ public final class FrameRingBuffer implements AutoCloseable {
         states.set(slot, READY);
     }
 
+    /** Returns an acquired slot when conversion fails before it can be published. */
+    public void releaseWritable(NativeImage image) {
+        int slot = indexOf(image);
+        states.compareAndSet(slot, WRITING, FREE);
+    }
+
     public VideoFrame pollLatest() {
         int selected = -1;
         long selectedPts = Long.MIN_VALUE;

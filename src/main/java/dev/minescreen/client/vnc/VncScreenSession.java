@@ -26,29 +26,43 @@ public final class VncScreenSession implements ScreenContentSession, ScreenInput
     private final UUID groupId;
     private final RfbClient client;
     private final boolean readOnly;
-    private final int inputWidth;
-    private final int inputHeight;
+    private int inputWidth;
+    private int inputHeight;
     private final ResourceLocation textureLocation;
     private DynamicTexture texture;
     private NativeImage image;
     private int textureWidth;
     private int textureHeight;
     private int buttonMask;
+    private boolean failureReported;
+    private boolean connectedReported;
+    private volatile long lastRenderedNanos;
 
     public VncScreenSession(ScreenGroup group, ClientScreenProfile profile) {
-        RfbEndpoint endpoint = RfbEndpoint.parse(profile.source);
-        if (!BrowserRequestPolicy.isAllowed(endpoint.policyUrl())) {
+        this(group, profile, RfbEndpoint.parse(profile.source), group.groupId(), false);
+    }
+
+    /** Finalization constructor used by joined canvases after asynchronous endpoint validation. */
+    public VncScreenSession(ScreenGroup group, ClientScreenProfile profile, RfbEndpoint endpoint,
+            UUID credentialGroupId, boolean policyValidated) {
+        if (!policyValidated && !BrowserRequestPolicy.isAllowed(endpoint.policyUrl())) {
             throw new IllegalStateException("VNC endpoint blocked by MineScreen network policy");
         }
         groupId = group.groupId();
         readOnly = profile.vncReadOnly;
         inputWidth = group.canvasWidth();
         inputHeight = group.canvasHeight();
-        VncCredentialStore.Credential credential = VncCredentialStore.get(groupId);
+        VncCredentialStore.Credential credential = VncCredentialStore.get(credentialGroupId);
         client = new RfbClient(endpoint, credential.password());
+        client.setTargetFps(VncRefreshRate.resolve(profile));
         textureLocation = ResourceLocation.fromNamespaceAndPath(MineScreen.MOD_ID,
                 "vnc/" + groupId.toString().replace('-', '_'));
         client.start();
+        if (Minecraft.getInstance().player != null) {
+            Minecraft.getInstance().player.displayClientMessage(
+                    net.minecraft.network.chat.Component.translatable(
+                            "screen.minescreen.vnc.connecting", endpoint.host(), endpoint.port()), true);
+        }
     }
 
     @Override
@@ -72,7 +86,14 @@ public final class VncScreenSession implements ScreenContentSession, ScreenInput
         if (texture == null) {
             return ScreenTextureManager.idleRenderSource();
         }
-        return new ScreenRenderSource(ScreenRenderType.screen(textureLocation), this::pumpUpdates);
+        return new ScreenRenderSource(ScreenRenderType.screen(textureLocation), this::prepareTexture);
+    }
+
+    /** Bind even when no dirty rectangle arrived; GUI preview quads bypass RenderType setup. */
+    private void prepareTexture() {
+        lastRenderedNanos = System.nanoTime();
+        pumpUpdates();
+        RenderSystem.setShaderTexture(0, textureLocation);
     }
 
     private void pumpUpdates() {
@@ -114,7 +135,31 @@ public final class VncScreenSession implements ScreenContentSession, ScreenInput
     @Override
     public void tick(ScreenGroup group) {
         ScreenVisibility.State visibility = ScreenVisibility.evaluate(group);
-        client.setUpdatesEnabled(visibility.active());
+        boolean recentlyRendered = System.nanoTime() - lastRenderedNanos
+                < java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(750L);
+        client.setUpdatesEnabled(visibility.active() || recentlyRendered);
+        String error = client.errorMessage();
+        if (error != null && !failureReported) {
+            failureReported = true;
+            Minecraft minecraft = Minecraft.getInstance();
+            if (minecraft.player != null) {
+                minecraft.player.displayClientMessage(net.minecraft.network.chat.Component.translatable(
+                        "screen.minescreen.vnc.connection_failed", error), false);
+            }
+        } else if (!connectedReported && client.receivedFramebufferUpdate()) {
+            connectedReported = true;
+            Minecraft minecraft = Minecraft.getInstance();
+            if (minecraft.player != null) {
+                minecraft.player.displayClientMessage(net.minecraft.network.chat.Component.translatable(
+                        "screen.minescreen.vnc.connected", client.width(), client.height()), true);
+            }
+        }
+    }
+
+    @Override
+    public void resize(ScreenGroup group) {
+        inputWidth = Math.max(1, group.canvasWidth());
+        inputHeight = Math.max(1, group.canvasHeight());
     }
 
     @Override

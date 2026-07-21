@@ -17,7 +17,16 @@ public final class ScreenGeometry {
             case SOUTH -> Direction.EAST;
             case EAST -> Direction.NORTH;
             case WEST -> Direction.SOUTH;
-            default -> Direction.WEST;
+            case UP, DOWN -> Direction.EAST;
+        };
+    }
+
+    /** Screen-up axis chosen so right x up always equals the outward face normal. */
+    public static Direction upDirection(Direction facing) {
+        return switch (facing) {
+            case NORTH, SOUTH, EAST, WEST -> Direction.UP;
+            case UP -> Direction.NORTH;
+            case DOWN -> Direction.SOUTH;
         };
     }
 
@@ -30,7 +39,8 @@ public final class ScreenGeometry {
             case SOUTH -> new Vec3(0.0D, 0.0D, 1.002D);
             case EAST -> new Vec3(1.002D, 0.0D, 1.0D);
             case WEST -> new Vec3(-0.002D, 0.0D, 0.0D);
-            default -> Vec3.ZERO;
+            case UP -> new Vec3(0.0D, 1.002D, 1.0D);
+            case DOWN -> new Vec3(0.0D, -0.002D, 0.0D);
         };
         return Vec3.atLowerCornerOf(pos).add(local);
     }
@@ -39,11 +49,20 @@ public final class ScreenGeometry {
         return Vec3.atLowerCornerOf(rightDirection(facing).getNormal());
     }
 
-    public static Vec3 up() {
-        return new Vec3(0.0D, 1.0D, 0.0D);
+    public static Vec3 up(Direction facing) {
+        return Vec3.atLowerCornerOf(upDirection(facing).getNormal());
     }
 
     public static Vec3 normal(Direction facing) {
         return Vec3.atLowerCornerOf(facing.getNormal());
+    }
+
+    public static int coordinate(BlockPos pos, Direction axis) {
+        return pos.getX() * axis.getStepX() + pos.getY() * axis.getStepY()
+                + pos.getZ() * axis.getStepZ();
+    }
+
+    public static int planeCoordinate(BlockPos pos, Direction facing) {
+        return coordinate(pos, facing);
     }
 }

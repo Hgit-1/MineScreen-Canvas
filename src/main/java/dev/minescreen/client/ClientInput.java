@@ -5,6 +5,7 @@ import org.lwjgl.glfw.GLFW;
 import dev.minescreen.MineScreen;
 import dev.minescreen.MineScreenConfig;
 import dev.minescreen.ScreenGroup;
+import dev.minescreen.ScreenGeometry;
 import dev.minescreen.client.content.ClientScreenProfile;
 import dev.minescreen.client.content.ScreenContentType;
 import net.minecraft.client.KeyMapping;
@@ -49,12 +50,17 @@ public final class ClientInput {
     public static boolean interceptKey(long window, int keyCode, int scanCode, int action,
             int modifiers) {
         Minecraft minecraft = Minecraft.getInstance();
-        if (window != minecraft.getWindow().getWindow() || minecraft.screen != null
-                || keyboardFocus == null || keyCode == GLFW.GLFW_KEY_UNKNOWN) {
+        if (window != minecraft.getWindow().getWindow() || keyCode == GLFW.GLFW_KEY_UNKNOWN) {
             return false;
         }
-        // Alt+Esc is supported when the OS delivers it; plain Esc is intentionally also a
-        // reliable fallback because desktop window managers may reserve Alt+Esc themselves.
+        if (minecraft.screen instanceof ComputerScreen computer
+                && computer.interceptBuiltInKeyboardKey(keyCode, scanCode, action, modifiers)) {
+            return true;
+        }
+        if (minecraft.screen != null || keyboardFocus == null) {
+            return false;
+        }
+        // Escape is the single reliable exit path and also releases WEB Pointer Lock.
         if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
             if (action == GLFW.GLFW_PRESS) {
                 exitKeyboardMode();
@@ -73,8 +79,14 @@ public final class ClientInput {
     /** Receives GLFW Unicode input and prevents it from being delivered to any game GUI/mod. */
     public static boolean interceptChar(long window, int codePoint, int modifiers) {
         Minecraft minecraft = Minecraft.getInstance();
-        if (window != minecraft.getWindow().getWindow() || minecraft.screen != null
-                || keyboardFocus == null || !Character.isValidCodePoint(codePoint)) {
+        if (window != minecraft.getWindow().getWindow() || !Character.isValidCodePoint(codePoint)) {
+            return false;
+        }
+        if (minecraft.screen instanceof ComputerScreen computer
+                && computer.interceptBuiltInKeyboardChar(codePoint, modifiers)) {
+            return true;
+        }
+        if (minecraft.screen != null || keyboardFocus == null) {
             return false;
         }
         for (char character : Character.toChars(codePoint)) {
@@ -96,7 +108,7 @@ public final class ClientInput {
             exitKeyboardMode();
         }
         setActive(usableWindow ? resolveTarget() : null);
-        if (active != null) {
+        if (active != null && !pointerLockActive()) {
             sendCrosshairMove(active);
         }
         updateKeyboardMode(minecraft, usableWindow);
@@ -107,8 +119,9 @@ public final class ClientInput {
         if (Minecraft.getInstance().screen != null) {
             return;
         }
-        // Shift + right click remains the explicit settings gesture and is not sent to content.
-        if (event.getButton() == GLFW.GLFW_MOUSE_BUTTON_RIGHT && Screen.hasShiftDown()) {
+        // The upstream-style Screen Configurator and the legacy Shift gesture own right-click.
+        if (event.getButton() == GLFW.GLFW_MOUSE_BUTTON_RIGHT
+                && (Screen.hasShiftDown() || holdingScreenConfigurator())) {
             return;
         }
         ActiveTarget target = refreshForEvent();
@@ -183,6 +196,11 @@ public final class ClientInput {
                 minecraft.player.displayClientMessage(
                         Component.translatable("screen.minescreen.computer.no_link"), true);
             } else {
+                if (!ScreenPowerManager.isPowered(linked)) {
+                    minecraft.player.displayClientMessage(
+                            Component.translatable("screen.minescreen.power.computer_warning"),
+                            true);
+                }
                 setActive(null);
                 minecraft.setScreen(new ComputerScreen(blockHit.getBlockPos(), linked));
             }
@@ -208,12 +226,19 @@ public final class ClientInput {
             event.setSwingHand(false);
             return;
         }
-        if (event.isUseItem() && Screen.hasShiftDown()) {
+        if (event.isUseItem() && (Screen.hasShiftDown() || holdingScreenConfigurator())) {
             ScreenRaycast.ScreenHit hit = ScreenRaycast.raycastNow();
             ScreenGroup group = hit == null ? null : ScreenGroupManager.group(hit.groupId());
             if (group != null) {
+                if (!ScreenPowerManager.isPowered(group)) {
+                    minecraft.player.displayClientMessage(
+                            Component.translatable("screen.minescreen.power.required"), true);
+                    event.setCanceled(true);
+                    event.setSwingHand(false);
+                    return;
+                }
                 setActive(null);
-                minecraft.setScreen(new ScreenEditorScreen(group));
+                minecraft.setScreen(new ScreenEditorScreen(group, hit.regionId(), null));
                 event.setCanceled(true);
                 event.setSwingHand(false);
             }
@@ -224,6 +249,14 @@ public final class ClientInput {
             event.setCanceled(true);
             event.setSwingHand(false);
         }
+    }
+
+    private static boolean holdingScreenConfigurator() {
+        Minecraft minecraft = Minecraft.getInstance();
+        return minecraft.player != null
+                && (minecraft.player.getMainHandItem().is(MineScreen.SCREEN_CONFIGURATOR_ITEM.get())
+                        || minecraft.player.getOffhandItem()
+                                .is(MineScreen.SCREEN_CONFIGURATOR_ITEM.get()));
     }
 
     @SubscribeEvent
@@ -243,7 +276,9 @@ public final class ClientInput {
         Minecraft minecraft = Minecraft.getInstance();
         Component label = Component.translatable(keyboardFocus == null
                 ? "screen.minescreen.controlling_crosshair"
-                : "screen.minescreen.keyboard.controlling");
+                : pointerLockActive()
+                        ? "screen.minescreen.web.pointer_lock"
+                        : "screen.minescreen.keyboard.controlling");
         int margin = 6;
         int width = minecraft.getWindow().getGuiScaledWidth();
         int height = minecraft.getWindow().getGuiScaledHeight();
@@ -271,10 +306,27 @@ public final class ClientInput {
             return null;
         }
         ScreenGroup group = ScreenGroupManager.group(hit.groupId());
-        if (group == null) {
+        if (group == null || !ScreenPowerManager.isPowered(group)) {
             return null;
         }
-        ClientScreenProfile profile = ScreenContentManager.profile(group.groupId());
+        ScreenContentManager.PanoramaRender joined = ScreenContentManager.panoramaFor(group);
+        if (joined != null) {
+            ClientScreenProfile root = ScreenContentManager.profile(joined.network().rootGroupId());
+            if (root.contentType != ScreenContentType.WEB
+                    && (root.contentType != ScreenContentType.VNC || root.vncReadOnly)) {
+                return null;
+            }
+            ScreenContentManager.sourceFor(group);
+            if (!(ScreenContentManager.session(group.groupId()) instanceof ScreenInputTarget target)) {
+                return null;
+            }
+            double globalU = joined.surface().canvasU((float) hit.u(), (float) hit.v());
+            double globalV = joined.surface().canvasV((float) hit.u(), (float) hit.v());
+            int x = clamp((int) Math.floor(globalU * target.inputWidth()), target.inputWidth());
+            int y = clamp((int) Math.floor(globalV * target.inputHeight()), target.inputHeight());
+            return new ActiveTarget(group.groupId(), 0, target, x, y);
+        }
+        ClientScreenProfile profile = ScreenContentManager.profile(group.groupId(), hit.regionId());
         if (profile.contentType != ScreenContentType.WEB
                 && profile.contentType != ScreenContentType.VNC) {
             return null;
@@ -282,13 +334,19 @@ public final class ClientInput {
         if (profile.contentType == ScreenContentType.VNC && profile.vncReadOnly) {
             return null;
         }
-        ScreenContentManager.sourceFor(group);
-        if (!(ScreenContentManager.session(group.groupId()) instanceof ScreenInputTarget target)) {
+        ScreenContentManager.sourceFor(group, hit.regionId());
+        if (!(ScreenContentManager.session(group.groupId(), hit.regionId())
+                instanceof ScreenInputTarget target)) {
             return null;
         }
-        int x = clamp((int) Math.floor(hit.u() * target.inputWidth()), target.inputWidth());
-        int y = clamp((int) Math.floor(hit.v() * target.inputHeight()), target.inputHeight());
-        return new ActiveTarget(group.groupId(), target, x, y);
+        int rotation = ScreenHostNetworkManager.rotationFor(group);
+        double contentU = dev.minescreen.client.content.ScreenRotation.contentU(
+                (float) hit.u(), (float) hit.v(), rotation);
+        double contentV = dev.minescreen.client.content.ScreenRotation.contentV(
+                (float) hit.u(), (float) hit.v(), rotation);
+        int x = clamp((int) Math.floor(contentU * target.inputWidth()), target.inputWidth());
+        int y = clamp((int) Math.floor(contentV * target.inputHeight()), target.inputHeight());
+        return new ActiveTarget(group.groupId(), hit.regionId(), target, x, y);
     }
 
     private static void setActive(ActiveTarget next) {
@@ -311,11 +369,62 @@ public final class ClientInput {
     private static boolean sameTarget(ActiveTarget first, ActiveTarget second) {
         return first == null ? second == null
                 : second != null && first.groupId().equals(second.groupId())
+                        && first.regionId() == second.regionId()
                         && first.target() == second.target();
     }
 
     private static void sendCrosshairMove(ActiveTarget target) {
+        if (pointerLockActive() && target.target() == keyboardFocus) {
+            return;
+        }
         target.target().mouseMove(target.x(), target.y());
+    }
+
+    /** Called from MouseHandler.turnPlayer before Minecraft applies yaw/pitch. */
+    public static boolean interceptPlayerTurn(double deltaX, double deltaY) {
+        if (!(keyboardFocus instanceof dev.minescreen.client.web.BrowserSession browser)
+                || Minecraft.getInstance().screen != null || !browser.pointerLockRequested()) {
+            return false;
+        }
+        browser.relativeMouseMove(deltaX, deltaY);
+        return true;
+    }
+
+    /** Aligns Pointer Lock with the physical panel instead of preserving an arbitrary pitch. */
+    public static void centerViewForPointerLock() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.player == null || active == null) {
+            return;
+        }
+        ScreenGroup group = ScreenGroupManager.group(active.groupId());
+        if (group == null) {
+            return;
+        }
+        // Aim at the center of a real tile, not the rectangular group AABB: an irregular canvas
+        // can have an empty center, which would immediately drop the crosshair target and release
+        // keyboard/Pointer Lock again.
+        net.minecraft.world.phys.Vec3 target = ScreenGeometry.origin(group.master(), group.facing())
+                .add(ScreenGeometry.right(group.facing()).scale(0.5D))
+                .add(ScreenGeometry.up(group.facing()).scale(0.5D));
+        net.minecraft.world.phys.Vec3 view = target.subtract(minecraft.player.getEyePosition());
+        if (view.lengthSqr() < 1.0E-6D) {
+            view = ScreenGeometry.normal(group.facing()).scale(-1.0D);
+        } else {
+            view = view.normalize();
+        }
+        float yaw = (float) Math.toDegrees(Math.atan2(-view.x, view.z));
+        float pitch = (float) Math.toDegrees(Math.asin(-view.y));
+        minecraft.player.setYRot(yaw);
+        minecraft.player.setYHeadRot(yaw);
+        minecraft.player.setYBodyRot(yaw);
+        minecraft.player.setXRot(pitch);
+        minecraft.player.yRotO = yaw;
+        minecraft.player.xRotO = pitch;
+    }
+
+    private static boolean pointerLockActive() {
+        return keyboardFocus instanceof dev.minescreen.client.web.BrowserSession browser
+                && browser.pointerLockRequested();
     }
 
     private static boolean canDismantle(ActiveTarget target) {
@@ -331,6 +440,9 @@ public final class ClientInput {
             return;
         }
         if (keyboardFocus != null) {
+            if (keyboardFocus instanceof dev.minescreen.client.web.BrowserSession browser) {
+                browser.cancelPointerLock();
+            }
             keyboardFocus.focus(false);
         }
         keyboardFocus = next;
@@ -372,6 +484,17 @@ public final class ClientInput {
     }
 
     private static ScreenInputTarget inputTarget(ScreenGroup group) {
+        ScreenContentManager.PanoramaRender joined = ScreenContentManager.panoramaFor(group);
+        if (joined != null) {
+            ClientScreenProfile profile = ScreenContentManager.profile(joined.network().rootGroupId());
+            if (profile.contentType != ScreenContentType.WEB
+                    && (profile.contentType != ScreenContentType.VNC || profile.vncReadOnly)) {
+                return null;
+            }
+            ScreenContentManager.sourceFor(group);
+            return ScreenContentManager.session(group.groupId()) instanceof ScreenInputTarget target
+                    ? target : null;
+        }
         ClientScreenProfile profile = ScreenContentManager.profile(group.groupId());
         if (profile.contentType != ScreenContentType.WEB
                 && (profile.contentType != ScreenContentType.VNC || profile.vncReadOnly)) {
@@ -448,6 +571,7 @@ public final class ClientInput {
         return Math.max(0, Math.min(Math.max(0, extent - 1), value));
     }
 
-    private record ActiveTarget(java.util.UUID groupId, ScreenInputTarget target, int x, int y) {
+    private record ActiveTarget(java.util.UUID groupId, int regionId,
+            ScreenInputTarget target, int x, int y) {
     }
 }

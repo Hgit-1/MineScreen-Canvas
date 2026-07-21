@@ -27,9 +27,10 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 
-/** Rebuilds connected tile groups only when the loaded-tile signature changes. */
+/** Tick-batched topology cache for physically adjacent coplanar screen tiles. */
 @EventBusSubscriber(modid = MineScreen.MOD_ID, value = Dist.CLIENT)
 public final class ScreenGroupManager {
+    private static final int MAX_NETWORK_NODES = 4096;
     private static final Map<UUID, ScreenGroup> GROUPS = new HashMap<>();
     private static final Map<BlockPos, ScreenGroup> BY_TILE = new HashMap<>();
     private static ClientLevel level;
@@ -52,7 +53,7 @@ public final class ScreenGroupManager {
             return;
         }
         List<ScreenBlockEntity> screens = ScreenTileIndex.snapshot(currentLevel);
-        long nextSignature = signature(screens, currentLevel.dimension());
+        long nextSignature = signature(screens, currentLevel);
         if (level == currentLevel && nextSignature == signature) {
             return;
         }
@@ -62,8 +63,6 @@ public final class ScreenGroupManager {
     }
 
     public static ScreenGroup groupAt(ScreenBlockEntity screen) {
-        // Deliberately lookup-only: connected-component BFS is batched on the client tick and is
-        // never triggered by a BER render call.
         return BY_TILE.get(screen.getBlockPos());
     }
 
@@ -94,13 +93,10 @@ public final class ScreenGroupManager {
                 nextByTile.put(start, legacy);
                 continue;
             }
-
             List<ScreenBlockEntity> component = connectedComponent(startScreen, byPos, unvisited);
             ScreenGroup group = makeGroup(currentLevel.dimension(), component);
             nextGroups.put(group.groupId(), group);
-            for (BlockPos tile : group.tiles()) {
-                nextByTile.put(tile, group);
-            }
+            group.tiles().forEach(tile -> nextByTile.put(tile, group));
         }
         GROUPS.clear();
         GROUPS.putAll(nextGroups);
@@ -110,65 +106,89 @@ public final class ScreenGroupManager {
     }
 
     private static List<ScreenBlockEntity> connectedComponent(ScreenBlockEntity start,
-            Map<BlockPos, ScreenBlockEntity> byPos, Set<BlockPos> unvisited) {
-        List<ScreenBlockEntity> component = new ArrayList<>();
+            Map<BlockPos, ScreenBlockEntity> byPos,
+            Set<BlockPos> unvisited) {
+        Direction facing = start.facing();
+        int plane = ScreenGeometry.planeCoordinate(start.getBlockPos(), facing);
+        Direction right = ScreenGeometry.rightDirection(facing);
+        Direction up = ScreenGeometry.upDirection(facing);
+        Direction[] screenSteps = {right, right.getOpposite(), up, up.getOpposite()};
         ArrayDeque<BlockPos> queue = new ArrayDeque<>();
+        Set<BlockPos> visitedNodes = new HashSet<>();
+        Set<BlockPos> addedScreens = new HashSet<>();
+        List<ScreenBlockEntity> component = new ArrayList<>();
         queue.add(start.getBlockPos());
+        visitedNodes.add(start.getBlockPos());
         unvisited.remove(start.getBlockPos());
-        Direction right = ScreenGeometry.rightDirection(start.facing());
-        Direction[] steps = {right, right.getOpposite(), Direction.UP, Direction.DOWN};
-        while (!queue.isEmpty()) {
-            BlockPos pos = queue.removeFirst();
-            ScreenBlockEntity screen = byPos.get(pos);
-            component.add(screen);
-            for (Direction step : steps) {
-                BlockPos nextPos = pos.relative(step);
-                ScreenBlockEntity next = byPos.get(nextPos);
-                if (next != null && !next.isLegacyAnchor() && next.facing() == start.facing()
-                        && unvisited.remove(nextPos)) {
-                    queue.addLast(nextPos);
+
+        while (!queue.isEmpty() && visitedNodes.size() <= MAX_NETWORK_NODES) {
+            BlockPos current = queue.removeFirst();
+            ScreenBlockEntity screen = byPos.get(current);
+            if (screen != null) {
+                if (screen.isLegacyAnchor() || screen.facing() != facing
+                        || ScreenGeometry.planeCoordinate(current, facing) != plane
+                        || !addedScreens.add(current)) {
+                    continue;
+                }
+                component.add(screen);
+                for (Direction step : screenSteps) {
+                    enqueueScreen(current.relative(step), facing, plane, byPos, unvisited,
+                            visitedNodes, queue);
                 }
             }
         }
         return component;
     }
 
+    private static void enqueueScreen(BlockPos pos, Direction facing, int plane,
+            Map<BlockPos, ScreenBlockEntity> byPos, Set<BlockPos> unvisited,
+            Set<BlockPos> visitedNodes, ArrayDeque<BlockPos> queue) {
+        ScreenBlockEntity candidate = byPos.get(pos);
+        if (candidate != null && !candidate.isLegacyAnchor() && candidate.facing() == facing
+                && ScreenGeometry.planeCoordinate(pos, facing) == plane
+                && visitedNodes.add(pos.immutable())) {
+            unvisited.remove(pos);
+            queue.addLast(pos.immutable());
+        }
+    }
+
     private static ScreenGroup makeGroup(ResourceKey<Level> dimension,
             List<ScreenBlockEntity> component) {
-        ScreenBlockEntity first = component.get(0);
+        ScreenBlockEntity first = component.getFirst();
         Direction facing = first.facing();
         Direction right = ScreenGeometry.rightDirection(facing);
-        int minH = Integer.MAX_VALUE;
-        int maxH = Integer.MIN_VALUE;
-        int minY = Integer.MAX_VALUE;
-        int maxY = Integer.MIN_VALUE;
+        Direction up = ScreenGeometry.upDirection(facing);
+        int minRight = Integer.MAX_VALUE;
+        int maxRight = Integer.MIN_VALUE;
+        int minUp = Integer.MAX_VALUE;
+        int maxUp = Integer.MIN_VALUE;
         UUID groupId = null;
         ScreenBlockEntity master = first;
         for (ScreenBlockEntity screen : component) {
             BlockPos pos = screen.getBlockPos();
-            int h = horizontalCoordinate(pos, right);
-            minH = Math.min(minH, h);
-            maxH = Math.max(maxH, h);
-            minY = Math.min(minY, pos.getY());
-            maxY = Math.max(maxY, pos.getY());
+            int rightCoordinate = ScreenGeometry.coordinate(pos, right);
+            int upCoordinate = ScreenGeometry.coordinate(pos, up);
+            minRight = Math.min(minRight, rightCoordinate);
+            maxRight = Math.max(maxRight, rightCoordinate);
+            minUp = Math.min(minUp, upCoordinate);
+            maxUp = Math.max(maxUp, upCoordinate);
             if (groupId == null || screen.tileId().compareTo(groupId) < 0) {
                 groupId = screen.tileId();
             }
-            if (compareMaster(screen, master, right) < 0) {
+            if (compareMaster(screen, master, right, up) < 0) {
                 master = screen;
             }
         }
         BlockPos sample = first.getBlockPos();
-        int sampleH = horizontalCoordinate(sample, right);
-        BlockPos origin = sample.offset(right.getStepX() * (minH - sampleH), minY - sample.getY(),
-                right.getStepZ() * (minH - sampleH));
+        BlockPos origin = sample.relative(right,
+                minRight - ScreenGeometry.coordinate(sample, right)).relative(up,
+                        minUp - ScreenGeometry.coordinate(sample, up));
         Set<BlockPos> tiles = new HashSet<>();
-        for (ScreenBlockEntity screen : component) {
-            tiles.add(screen.getBlockPos().immutable());
-        }
+        component.forEach(screen -> tiles.add(screen.getBlockPos().immutable()));
+        int columns = maxRight - minRight + 1;
+        int rows = maxUp - minUp + 1;
         return new ScreenGroup(groupId, dimension, facing, master.getBlockPos(), origin,
-                maxH - minH + 1, maxY - minY + 1, tiles, bounds(origin, facing, maxH - minH + 1,
-                        maxY - minY + 1), false);
+                columns, rows, tiles, bounds(origin, facing, columns, rows), false);
     }
 
     private static ScreenGroup legacyGroup(ResourceKey<Level> dimension, ScreenBlockEntity screen) {
@@ -179,40 +199,42 @@ public final class ScreenGroupManager {
     }
 
     private static AABB bounds(BlockPos origin, Direction facing, int columns, int rows) {
-        Vec3 p0 = ScreenGeometry.origin(origin, facing);
-        Vec3 p1 = p0.add(ScreenGeometry.right(facing).scale(columns)).add(ScreenGeometry.up().scale(rows));
-        return new AABB(p0, p1).inflate(0.05D);
+        Vec3 first = ScreenGeometry.origin(origin, facing);
+        Vec3 second = first.add(ScreenGeometry.right(facing).scale(columns))
+                .add(ScreenGeometry.up(facing).scale(rows));
+        return new AABB(first, second).inflate(0.05D);
     }
 
-    private static int compareMaster(ScreenBlockEntity a, ScreenBlockEntity b, Direction right) {
-        BlockPos pa = a.getBlockPos();
-        BlockPos pb = b.getBlockPos();
-        int y = Integer.compare(pa.getY(), pb.getY());
-        if (y != 0) {
-            return y;
+    private static int compareMaster(ScreenBlockEntity first, ScreenBlockEntity second,
+            Direction right, Direction up) {
+        int vertical = Integer.compare(ScreenGeometry.coordinate(first.getBlockPos(), up),
+                ScreenGeometry.coordinate(second.getBlockPos(), up));
+        if (vertical != 0) {
+            return vertical;
         }
-        int h = Integer.compare(horizontalCoordinate(pa, right), horizontalCoordinate(pb, right));
-        return h != 0 ? h : a.tileId().compareTo(b.tileId());
+        int horizontal = Integer.compare(ScreenGeometry.coordinate(first.getBlockPos(), right),
+                ScreenGeometry.coordinate(second.getBlockPos(), right));
+        return horizontal != 0 ? horizontal : first.tileId().compareTo(second.tileId());
     }
 
-    private static int horizontalCoordinate(BlockPos pos, Direction right) {
-        return pos.getX() * right.getStepX() + pos.getZ() * right.getStepZ();
-    }
-
-    private static long signature(List<ScreenBlockEntity> screens, ResourceKey<Level> dimension) {
-        return screens.stream().sorted(Comparator.comparing(screen -> screen.getBlockPos().asLong()))
+    private static long signature(List<ScreenBlockEntity> screens, ClientLevel level) {
+        long hash = screens.stream().sorted(Comparator.comparing(screen -> screen.getBlockPos().asLong()))
                 .mapToLong(screen -> {
                     BlockPos pos = screen.getBlockPos();
-                    long hash = 17L;
-                    hash = hash * 31L + dimension.location().hashCode();
-                    hash = hash * 31L + pos.asLong();
-                    hash = hash * 31L + screen.tileId().getMostSignificantBits();
-                    hash = hash * 31L + screen.tileId().getLeastSignificantBits();
-                    hash = hash * 31L + screen.facing().ordinal();
-                    hash = hash * 31L + (screen.isLegacyAnchor() ? 1 : 0);
-                    hash = hash * 31L + screen.getScreenWidth();
-                    hash = hash * 31L + screen.getScreenHeight();
-                    return hash;
-                }).reduce(1L, (a, b) -> a * 31L + b);
+                    long value = 17L;
+                    value = value * 31L + level.dimension().location().hashCode();
+                    value = value * 31L + pos.asLong();
+                    value = value * 31L + screen.tileId().getMostSignificantBits();
+                    value = value * 31L + screen.tileId().getLeastSignificantBits();
+                    value = value * 31L + screen.facing().ordinal();
+                    value = value * 31L + (screen.isLegacyAnchor() ? 1 : 0);
+                    value = value * 31L + screen.getScreenWidth();
+                    value = value * 31L + screen.getScreenHeight();
+                    return value;
+                }).reduce(1L, (first, second) -> first * 31L + second);
+
+        // Extension cables connect already-resolved physical surfaces at the host-network layer.
+        // They must not affect a plane's identity or force Chromium/video sessions to restart.
+        return hash;
     }
 }

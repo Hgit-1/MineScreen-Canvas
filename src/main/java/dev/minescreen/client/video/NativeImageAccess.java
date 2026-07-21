@@ -1,30 +1,25 @@
 package dev.minescreen.client.video;
 
-import java.lang.reflect.Field;
-
 import com.mojang.blaze3d.platform.NativeImage;
+import dev.minescreen.mixin.client.NativeImageAccessor;
 import org.lwjgl.system.MemoryUtil;
 
 /** Fast RGBA copy bridge; NativeImage stores its pixels in one native allocation. */
 public final class NativeImageAccess {
-    private static final Field PIXELS;
-
-    static {
-        try {
-            PIXELS = NativeImage.class.getDeclaredField("pixels");
-            PIXELS.setAccessible(true);
-        } catch (ReflectiveOperationException exception) {
-            throw new ExceptionInInitializerError(exception);
-        }
-    }
-
     private NativeImageAccess() {
     }
 
     public static long address(NativeImage image) {
+        if ((Object) image instanceof NativeImageAccessor accessor) {
+            return accessor.minescreen$getPixels();
+        }
+        // Standalone decoder probes do not bootstrap Mixin. Keep a development-only fallback so
+        // the exact FFmpeg/ring path remains testable; production always takes the remapped accessor.
         try {
-            return PIXELS.getLong(image);
-        } catch (IllegalAccessException exception) {
+            java.lang.reflect.Field pixels = NativeImage.class.getDeclaredField("pixels");
+            pixels.setAccessible(true);
+            return pixels.getLong(image);
+        } catch (ReflectiveOperationException exception) {
             throw new IllegalStateException("Unable to access NativeImage storage", exception);
         }
     }

@@ -66,6 +66,17 @@ neoForge {
 
 sourceSets.main.resources { srcDir 'src/generated/resources' }
 
+configurations {
+    // JavaCPP API and Windows natives must share one runtime class-path root. NeoForge Jar-in-Jar
+    // metadata has no classifier field, so embedding the base and windows-x86_64 artifacts as two
+    // jars gives them the same identifier and can cause one half to be discarded at launch.
+    ffmpegEmbed {
+        canBeConsumed = false
+        canBeResolved = true
+        transitive = false
+    }
+}
+
 dependencies {
     // Keep the requested JavaCPP platform coordinate/version, but do not pull every OS/CPU native
     // bundle into a single development install. The API jar is platform-neutral and this MVP ships
@@ -75,15 +86,28 @@ dependencies {
     implementation 'org.bytedeco:ffmpeg:7.1-1.5.11'
     runtimeOnly 'org.bytedeco:ffmpeg:7.1-1.5.11:windows-x86_64'
     runtimeOnly 'org.bytedeco:javacpp:1.5.11:windows-x86_64'
-    // NeoForge nested jars make the released Windows MVP self-contained. MCEF remains external.
-    jarJar('org.bytedeco:ffmpeg:7.1-1.5.11') { transitive = false }
-    jarJar('org.bytedeco:javacpp:1.5.11') { transitive = false }
-    jarJar('org.bytedeco:ffmpeg:7.1-1.5.11:windows-x86_64') { transitive = false }
-    jarJar('org.bytedeco:javacpp:1.5.11:windows-x86_64') { transitive = false }
+    // Merge API and classifier resources into the mod jar so JavaCPP sees one coherent classpath
+    // root and NeoForge never has to resolve duplicate classifier-less Jar-in-Jar identifiers.
+    ffmpegEmbed 'org.bytedeco:ffmpeg:7.1-1.5.11'
+    ffmpegEmbed 'org.bytedeco:javacpp:1.5.11'
+    ffmpegEmbed 'org.bytedeco:ffmpeg:7.1-1.5.11:windows-x86_64'
+    ffmpegEmbed 'org.bytedeco:javacpp:1.5.11:windows-x86_64'
 
     // MCEF is a required client mod, not shaded into MineScreen. The common artifact exposes its API;
     // the NeoForge artifact is present in development runs and is installed separately by end users.
     compileOnly 'com.cinemamod:mcef:2.1.6-1.21.1'
+
+}
+
+tasks.named('jar', Jar).configure {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from({ configurations.ffmpegEmbed.collect { zipTree(it) } }) {
+        exclude 'META-INF/MANIFEST.MF'
+        exclude 'META-INF/*.SF'
+        exclude 'META-INF/*.RSA'
+        exclude 'META-INF/*.DSA'
+        exclude 'module-info.class'
+    }
 }
 
 neoForge.runs.named('client') {
@@ -140,6 +164,43 @@ tasks.register('tightDecoderTest', JavaExec) {
     mainClass = 'dev.minescreen.client.vnc.TightDecoderTestHarness'
 }
 
+tasks.register('rfbExternalProbe', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.minescreen.client.vnc.RfbExternalProbe'
+}
+
+tasks.register('videoDecoderProbe', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath + configurations.clientLegacyClasspath + files(
+            layout.buildDirectory.file("moddev/artifacts/neoforge-${neo_version}-minecraft-merged.jar"))
+    mainClass = 'dev.minescreen.client.video.FfmpegVideoProbe'
+    if (providers.gradleProperty('videoProbeSource').isPresent()) {
+        args providers.gradleProperty('videoProbeSource').get()
+        if (providers.gradleProperty('videoProbeWidth').isPresent()
+                && providers.gradleProperty('videoProbeHeight').isPresent()) {
+            args providers.gradleProperty('videoProbeWidth').get()
+            args providers.gradleProperty('videoProbeHeight').get()
+        }
+    }
+}
+
+tasks.register('packagedFfmpegProbe', JavaExec) {
+    dependsOn tasks.named('jar'), testClasses
+    // Deliberately exclude Gradle's FFmpeg/runtime configurations. The wrapper classes and native
+    // DLLs must be discovered from the final MineScreen jar itself, matching an installed client.
+    classpath = files(sourceSets.test.output, tasks.named('jar').flatMap { it.archiveFile })
+    mainClass = 'dev.minescreen.client.video.PackagedFfmpegProbe'
+}
+
+tasks.register('profileSourceTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.minescreen.client.content.ClientScreenProfileSourceTestHarness'
+}
+
 tasks.named('check').configure {
     dependsOn tasks.named('tightDecoderTest')
+    dependsOn tasks.named('profileSourceTest')
+    dependsOn tasks.named('packagedFfmpegProbe')
 }

@@ -26,6 +26,16 @@ import org.lwjgl.system.MemoryUtil;
  * performs socket/CPU work; immutable dirty rectangles cross to the render thread through a queue.
  */
 public final class RfbClient implements AutoCloseable {
+    public enum State {
+        CONNECTING,
+        NEGOTIATING,
+        AUTHENTICATING,
+        INITIALIZING,
+        CONNECTED,
+        FAILED,
+        CLOSED
+    }
+
     private static final int ENCODING_RAW = 0;
     private static final int ENCODING_COPY_RECT = 1;
     private static final int ENCODING_TIGHT = 7;
@@ -37,13 +47,21 @@ public final class RfbClient implements AutoCloseable {
 
     private final RfbEndpoint endpoint;
     private final String password;
+    private final int compressionLevel;
+    private final int jpegQuality;
+    private final int maxFramebufferPixels;
+    private final boolean publishFrames;
     private final ArrayBlockingQueue<RfbFramebufferUpdate> updates =
             new ArrayBlockingQueue<>(MAX_UPDATE_QUEUE);
     private volatile boolean running = true;
     private volatile boolean updatesEnabled = true;
+    private volatile int targetFps = 20;
+    private volatile long nextUpdateRequestNanos;
     private volatile String errorMessage;
     private volatile int width;
     private volatile int height;
+    private volatile State state = State.CONNECTING;
+    private volatile boolean receivedFramebufferUpdate;
     private byte[] framebuffer = new byte[0];
     private Socket socket;
     private DataOutputStream output;
@@ -52,8 +70,18 @@ public final class RfbClient implements AutoCloseable {
     private final TightDecoder tightDecoder = new TightDecoder();
 
     public RfbClient(RfbEndpoint endpoint, String password) {
+        this(endpoint, password, MineScreenConfig.VNC_COMPRESSION_LEVEL.get(),
+                MineScreenConfig.VNC_JPEG_QUALITY.get(), MineScreenConfig.MAX_CANVAS_PIXELS.get(), true);
+    }
+
+    RfbClient(RfbEndpoint endpoint, String password, int compressionLevel, int jpegQuality,
+            int maxFramebufferPixels, boolean publishFrames) {
         this.endpoint = endpoint;
         this.password = password == null ? "" : password;
+        this.compressionLevel = Math.max(0, Math.min(9, compressionLevel));
+        this.jpegQuality = Math.max(0, Math.min(9, jpegQuality));
+        this.maxFramebufferPixels = Math.max(1, maxFramebufferPixels);
+        this.publishFrames = publishFrames;
     }
 
     public void start() {
@@ -77,6 +105,14 @@ public final class RfbClient implements AutoCloseable {
         return errorMessage;
     }
 
+    public State state() {
+        return state;
+    }
+
+    boolean receivedFramebufferUpdate() {
+        return receivedFramebufferUpdate;
+    }
+
     public RfbFramebufferUpdate pollUpdate() {
         return updates.poll();
     }
@@ -91,6 +127,10 @@ public final class RfbClient implements AutoCloseable {
                 fail(exception);
             }
         }
+    }
+
+    public void setTargetFps(int fps) {
+        targetFps = Math.max(1, Math.min(60, fps));
     }
 
     public synchronized void pointerEvent(int x, int y, int mask) {
@@ -133,16 +173,23 @@ public final class RfbClient implements AutoCloseable {
             socket = connected;
             connected.connect(new InetSocketAddress(endpoint.host(), endpoint.port()), 10_000);
             connected.setTcpNoDelay(true);
+            // A server that accepts TCP but never completes security/init must not leave an IDLE
+            // screen forever. The timeout is removed after the first framebuffer update.
+            connected.setSoTimeout(15_000);
             DataInputStream input = new DataInputStream(new BufferedInputStream(connected.getInputStream()));
             output = new DataOutputStream(new BufferedOutputStream(connected.getOutputStream()));
+            state = State.NEGOTIATING;
             int protocolMinor = negotiateVersion(input);
+            state = State.AUTHENTICATING;
             negotiateSecurity(input, protocolMinor);
+            state = State.INITIALIZING;
             output.writeByte(1); // shared desktop; exclusivity is coordinated by MineScreen.
             output.flush();
             readServerInit(input);
             sendPixelFormat();
             sendEncodings();
             requestFramebufferUpdate(false);
+            state = State.CONNECTED;
             while (running) {
                 int message = input.readUnsignedByte();
                 switch (message) {
@@ -221,7 +268,17 @@ public final class RfbClient implements AutoCloseable {
         if (protocolMinor >= 7 || selected == 2) {
             int result = input.readInt();
             if (result != 0) {
-                String reason = protocolMinor >= 8 ? readReason(input) : "VNC authentication failed";
+                String reason = "VNC authentication failed";
+                if (protocolMinor >= 8) {
+                    try {
+                        String supplied = readReason(input);
+                        if (!supplied.isBlank()) {
+                            reason = supplied;
+                        }
+                    } catch (EOFException ignored) {
+                        reason += " (server closed without a reason)";
+                    }
+                }
                 throw new IOException(reason);
             }
         }
@@ -257,8 +314,6 @@ public final class RfbClient implements AutoCloseable {
     }
 
     private synchronized void sendEncodings() throws IOException {
-        int compression = MineScreenConfig.VNC_COMPRESSION_LEVEL.get();
-        int quality = MineScreenConfig.VNC_JPEG_QUALITY.get();
         output.writeByte(2);
         output.writeByte(0);
         output.writeShort(7);
@@ -267,8 +322,8 @@ public final class RfbClient implements AutoCloseable {
         output.writeInt(ENCODING_RAW);
         output.writeInt(ENCODING_DESKTOP_SIZE);
         output.writeInt(ENCODING_LAST_RECT);
-        output.writeInt(ENCODING_COMPRESS_LEVEL_0 + compression);
-        output.writeInt(ENCODING_QUALITY_LEVEL_0 + quality);
+        output.writeInt(ENCODING_COMPRESS_LEVEL_0 + compressionLevel);
+        output.writeInt(ENCODING_QUALITY_LEVEL_0 + jpegQuality);
         output.flush();
     }
 
@@ -297,8 +352,15 @@ public final class RfbClient implements AutoCloseable {
                 throw new IOException("Unsupported RFB rectangle encoding: " + encoding);
             }
         }
+        if (!receivedFramebufferUpdate) {
+            receivedFramebufferUpdate = true;
+            Socket current = socket;
+            if (current != null) {
+                current.setSoTimeout(0);
+            }
+        }
         if (updatesEnabled && running) {
-            requestFramebufferUpdate(true);
+            requestNextFramebufferUpdate();
         }
     }
 
@@ -356,7 +418,7 @@ public final class RfbClient implements AutoCloseable {
 
     private void resizeFramebuffer(int nextWidth, int nextHeight) throws IOException {
         long pixels = (long) nextWidth * nextHeight;
-        if (nextWidth < 1 || nextHeight < 1 || pixels > MineScreenConfig.MAX_CANVAS_PIXELS.get()) {
+        if (nextWidth < 1 || nextHeight < 1 || pixels > maxFramebufferPixels) {
             throw new IOException("VNC desktop exceeds max_canvas_pixels: " + nextWidth + "x" + nextHeight);
         }
         width = nextWidth;
@@ -369,6 +431,9 @@ public final class RfbClient implements AutoCloseable {
     }
 
     private void publish(int x, int y, int rectangleWidth, int rectangleHeight) {
+        if (!publishFrames) {
+            return;
+        }
         RfbFramebufferUpdate update = snapshot(x, y, rectangleWidth, rectangleHeight);
         if (updates.offer(update)) {
             return;
@@ -407,6 +472,26 @@ public final class RfbClient implements AutoCloseable {
         output.writeShort(width);
         output.writeShort(height);
         output.flush();
+        nextUpdateRequestNanos = System.nanoTime()
+                + 1_000_000_000L / Math.max(1, targetFps);
+    }
+
+    /**
+     * RFB is request-driven. Throttling here limits server encoding work and network bandwidth;
+     * merely dropping already-received frames would not provide either saving.
+     */
+    private void requestNextFramebufferUpdate() throws IOException {
+        while (running && updatesEnabled) {
+            long remaining = nextUpdateRequestNanos - System.nanoTime();
+            if (remaining <= 0L) {
+                requestFramebufferUpdate(true);
+                return;
+            }
+            java.util.concurrent.locks.LockSupport.parkNanos(Math.min(remaining, 10_000_000L));
+            if (Thread.interrupted()) {
+                return;
+            }
+        }
     }
 
     private static byte[] vncChallengeResponse(byte[] challenge, String password)
@@ -465,8 +550,12 @@ public final class RfbClient implements AutoCloseable {
     }
 
     private void fail(Exception exception) {
-        errorMessage = exception.getMessage() == null ? exception.getClass().getSimpleName()
+        State failedAt = state;
+        String detail = exception.getMessage() == null ? exception.getClass().getSimpleName()
                 : exception.getMessage();
+        errorMessage = "VNC " + failedAt.name().toLowerCase(java.util.Locale.ROOT)
+                + " failed: " + detail;
+        state = State.FAILED;
         running = false;
         Socket current = socket;
         if (current != null) {
@@ -484,6 +573,7 @@ public final class RfbClient implements AutoCloseable {
     @Override
     public void close() {
         running = false;
+        state = State.CLOSED;
         Socket current = socket;
         if (current != null) {
             try {

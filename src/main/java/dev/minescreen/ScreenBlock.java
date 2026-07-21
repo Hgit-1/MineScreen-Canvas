@@ -25,7 +25,7 @@ import com.mojang.serialization.MapCodec;
 /** A one-block anchor for a screen surface. Its block entity may render a wider plane. */
 public final class ScreenBlock extends BaseEntityBlock {
     public static final MapCodec<ScreenBlock> CODEC = simpleCodec(ScreenBlock::new);
-    public static final DirectionProperty FACING = BlockStateProperties.HORIZONTAL_FACING;
+    public static final DirectionProperty FACING = BlockStateProperties.FACING;
 
     public ScreenBlock(Properties properties) {
         super(properties);
@@ -44,8 +44,8 @@ public final class ScreenBlock extends BaseEntityBlock {
 
     @Override
     public BlockState getStateForPlacement(BlockPlaceContext context) {
-        // FACING is the outward normal of the visible side, i.e. toward the placer.
-        return defaultBlockState().setValue(FACING, context.getHorizontalDirection().getOpposite());
+        // The clicked face is the outward normal, including floor and ceiling placement.
+        return defaultBlockState().setValue(FACING, context.getClickedFace());
     }
 
     @Override
@@ -78,7 +78,8 @@ public final class ScreenBlock extends BaseEntityBlock {
             case SOUTH -> box(0.0D, 0.0D, 12.0D, 16.0D, 16.0D, 16.0D);
             case EAST -> box(12.0D, 0.0D, 0.0D, 16.0D, 16.0D, 16.0D);
             case WEST -> box(0.0D, 0.0D, 0.0D, 4.0D, 16.0D, 16.0D);
-            default -> box(0.0D, 0.0D, 0.0D, 16.0D, 16.0D, 4.0D);
+            case UP -> box(0.0D, 12.0D, 0.0D, 16.0D, 16.0D, 16.0D);
+            case DOWN -> box(0.0D, 0.0D, 0.0D, 16.0D, 4.0D, 16.0D);
         };
     }
 

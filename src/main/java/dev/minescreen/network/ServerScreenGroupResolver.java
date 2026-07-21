@@ -17,8 +17,10 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
-/** Server-side counterpart used only to validate a client-claimed joined group. */
+/** Server validation counterpart for physically adjacent coplanar screen groups. */
 final class ServerScreenGroupResolver {
+    private static final int MAX_NETWORK_NODES = 16_384;
+
     private ServerScreenGroupResolver() {
     }
 
@@ -31,82 +33,107 @@ final class ServerScreenGroupResolver {
                     start.getScreenWidth(), start.getScreenHeight(), Set.of(startPos.immutable()),
                     bounds(startPos, start.facing(), start.getScreenWidth(), start.getScreenHeight()), true);
         }
-        Direction right = ScreenGeometry.rightDirection(start.facing());
-        Direction[] steps = {right, right.getOpposite(), Direction.UP, Direction.DOWN};
+        Direction facing = start.facing();
+        int plane = ScreenGeometry.planeCoordinate(startPos, facing);
+        Direction right = ScreenGeometry.rightDirection(facing);
+        Direction up = ScreenGeometry.upDirection(facing);
+        Direction[] screenSteps = {right, right.getOpposite(), up, up.getOpposite()};
         ArrayDeque<BlockPos> queue = new ArrayDeque<>();
         Set<BlockPos> visited = new HashSet<>();
+        Set<BlockPos> addedScreens = new HashSet<>();
         List<ScreenBlockEntity> component = new ArrayList<>();
-        queue.add(startPos);
-        visited.add(startPos);
-        while (!queue.isEmpty() && component.size() <= 16_384) {
-            BlockPos pos = queue.removeFirst();
-            if (!(level.getBlockEntity(pos) instanceof ScreenBlockEntity screen)
-                    || screen.isLegacyAnchor() || screen.facing() != start.facing()) {
-                continue;
-            }
-            component.add(screen);
-            for (Direction step : steps) {
-                BlockPos next = pos.relative(step);
-                if (level.hasChunk(SectionPos.blockToSectionCoord(next.getX()),
-                        SectionPos.blockToSectionCoord(next.getZ())) && visited.add(next)
-                        && level.getBlockEntity(next) instanceof ScreenBlockEntity candidate
-                        && !candidate.isLegacyAnchor() && candidate.facing() == start.facing()) {
-                    queue.addLast(next);
+        queue.add(startPos.immutable());
+        visited.add(startPos.immutable());
+
+        while (!queue.isEmpty() && visited.size() <= MAX_NETWORK_NODES) {
+            BlockPos current = queue.removeFirst();
+            if (level.getBlockEntity(current) instanceof ScreenBlockEntity screen) {
+                if (screen.isLegacyAnchor() || screen.facing() != facing
+                        || ScreenGeometry.planeCoordinate(current, facing) != plane
+                        || !addedScreens.add(current)) {
+                    continue;
+                }
+                component.add(screen);
+                for (Direction step : screenSteps) {
+                    enqueue(level, current.relative(step), facing, plane, visited, queue);
                 }
             }
         }
-        if (component.isEmpty() || component.size() > 16_384) {
+        if (component.isEmpty() || visited.size() > MAX_NETWORK_NODES) {
             return null;
         }
-        int minH = Integer.MAX_VALUE;
-        int maxH = Integer.MIN_VALUE;
-        int minY = Integer.MAX_VALUE;
-        int maxY = Integer.MIN_VALUE;
+        return makeGroup(level, component);
+    }
+
+    private static void enqueue(ServerLevel level, BlockPos pos, Direction facing, int plane,
+            Set<BlockPos> visited, ArrayDeque<BlockPos> queue) {
+        if (loaded(level, pos) && level.getBlockEntity(pos) instanceof ScreenBlockEntity candidate
+                && !candidate.isLegacyAnchor() && candidate.facing() == facing
+                && ScreenGeometry.planeCoordinate(pos, facing) == plane
+                && visited.add(pos.immutable())) {
+            queue.addLast(pos.immutable());
+        }
+    }
+
+    private static boolean loaded(ServerLevel level, BlockPos pos) {
+        return level.hasChunk(SectionPos.blockToSectionCoord(pos.getX()),
+                SectionPos.blockToSectionCoord(pos.getZ()));
+    }
+
+    private static ScreenGroup makeGroup(ServerLevel level, List<ScreenBlockEntity> component) {
+        ScreenBlockEntity first = component.getFirst();
+        Direction facing = first.facing();
+        Direction right = ScreenGeometry.rightDirection(facing);
+        Direction up = ScreenGeometry.upDirection(facing);
+        int minRight = Integer.MAX_VALUE;
+        int maxRight = Integer.MIN_VALUE;
+        int minUp = Integer.MAX_VALUE;
+        int maxUp = Integer.MIN_VALUE;
         UUID groupId = null;
-        ScreenBlockEntity master = component.getFirst();
+        ScreenBlockEntity master = first;
         for (ScreenBlockEntity screen : component) {
-            int horizontal = horizontal(screen.getBlockPos(), right);
-            minH = Math.min(minH, horizontal);
-            maxH = Math.max(maxH, horizontal);
-            minY = Math.min(minY, screen.getBlockPos().getY());
-            maxY = Math.max(maxY, screen.getBlockPos().getY());
+            BlockPos pos = screen.getBlockPos();
+            int rightCoordinate = ScreenGeometry.coordinate(pos, right);
+            int upCoordinate = ScreenGeometry.coordinate(pos, up);
+            minRight = Math.min(minRight, rightCoordinate);
+            maxRight = Math.max(maxRight, rightCoordinate);
+            minUp = Math.min(minUp, upCoordinate);
+            maxUp = Math.max(maxUp, upCoordinate);
             if (groupId == null || screen.tileId().compareTo(groupId) < 0) {
                 groupId = screen.tileId();
             }
-            if (compareMaster(screen, master, right) < 0) {
+            if (compareMaster(screen, master, right, up) < 0) {
                 master = screen;
             }
         }
-        BlockPos sample = component.getFirst().getBlockPos();
-        int sampleH = horizontal(sample, right);
-        BlockPos origin = sample.offset(right.getStepX() * (minH - sampleH), minY - sample.getY(),
-                right.getStepZ() * (minH - sampleH));
+        BlockPos sample = first.getBlockPos();
+        BlockPos origin = sample.relative(right,
+                minRight - ScreenGeometry.coordinate(sample, right)).relative(up,
+                        minUp - ScreenGeometry.coordinate(sample, up));
         Set<BlockPos> tiles = new HashSet<>();
         component.forEach(screen -> tiles.add(screen.getBlockPos().immutable()));
-        int columns = maxH - minH + 1;
-        int rows = maxY - minY + 1;
-        return new ScreenGroup(groupId, level.dimension(), start.facing(), master.getBlockPos(), origin,
-                columns, rows, tiles, bounds(origin, start.facing(), columns, rows), false);
+        int columns = maxRight - minRight + 1;
+        int rows = maxUp - minUp + 1;
+        return new ScreenGroup(groupId, level.dimension(), facing, master.getBlockPos(), origin,
+                columns, rows, tiles, bounds(origin, facing, columns, rows), false);
     }
 
-    private static int compareMaster(ScreenBlockEntity first, ScreenBlockEntity second, Direction right) {
-        int y = Integer.compare(first.getBlockPos().getY(), second.getBlockPos().getY());
-        if (y != 0) {
-            return y;
+    private static int compareMaster(ScreenBlockEntity first, ScreenBlockEntity second,
+            Direction right, Direction up) {
+        int vertical = Integer.compare(ScreenGeometry.coordinate(first.getBlockPos(), up),
+                ScreenGeometry.coordinate(second.getBlockPos(), up));
+        if (vertical != 0) {
+            return vertical;
         }
-        int horizontal = Integer.compare(horizontal(first.getBlockPos(), right),
-                horizontal(second.getBlockPos(), right));
+        int horizontal = Integer.compare(ScreenGeometry.coordinate(first.getBlockPos(), right),
+                ScreenGeometry.coordinate(second.getBlockPos(), right));
         return horizontal != 0 ? horizontal : first.tileId().compareTo(second.tileId());
-    }
-
-    private static int horizontal(BlockPos pos, Direction right) {
-        return pos.getX() * right.getStepX() + pos.getZ() * right.getStepZ();
     }
 
     private static AABB bounds(BlockPos origin, Direction facing, int columns, int rows) {
         Vec3 first = ScreenGeometry.origin(origin, facing);
         Vec3 second = first.add(ScreenGeometry.right(facing).scale(columns))
-                .add(ScreenGeometry.up().scale(rows));
+                .add(ScreenGeometry.up(facing).scale(rows));
         return new AABB(first, second).inflate(0.05D);
     }
 }

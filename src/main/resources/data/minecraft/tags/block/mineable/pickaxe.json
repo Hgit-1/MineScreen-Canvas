@@ -4,6 +4,7 @@
     "minescreen:screen",
     "minescreen:screen_cable",
     "minescreen:fixed_keyboard",
-    "minescreen:computer"
+    "minescreen:computer",
+    "minescreen:speaker"
   ]
 }

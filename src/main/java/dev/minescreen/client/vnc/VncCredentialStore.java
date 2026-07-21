@@ -56,13 +56,18 @@ public final class VncCredentialStore {
         }
         credentials = new HashMap<>();
         Path path = path();
-        if (!Files.isRegularFile(path)) {
+        Path source = Files.isRegularFile(path) ? path : legacyPath();
+        if (!Files.isRegularFile(source)) {
             return;
         }
-        try (Reader reader = Files.newBufferedReader(path)) {
+        try (Reader reader = Files.newBufferedReader(source)) {
             Map<String, Credential> loaded = GSON.fromJson(reader, TYPE);
             if (loaded != null) {
                 credentials.putAll(loaded);
+                if (!source.equals(path)) {
+                    // Copy back from the short-lived WebDisplays-branded development build.
+                    save();
+                }
             }
         } catch (IOException | RuntimeException ignored) {
         }
@@ -82,6 +87,11 @@ public final class VncCredentialStore {
     private static Path path() {
         return Minecraft.getInstance().gameDirectory.toPath()
                 .resolve("config/minescreen-vnc-credentials.json");
+    }
+
+    private static Path legacyPath() {
+        return Minecraft.getInstance().gameDirectory.toPath()
+                .resolve("config/webdisplays-vnc-credentials.json");
     }
 
     public record Credential(String username, String password) {

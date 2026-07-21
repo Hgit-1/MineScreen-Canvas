@@ -27,6 +27,10 @@ public interface ScreenContentSession extends AutoCloseable {
     default void setPaused(boolean paused) {
     }
 
+    /** Hot audio control. Implementations must not recreate their visual/backend session. */
+    default void setVolume(float volume) {
+    }
+
     /** Non-null only when a backend could not open its source; used by the local editor. */
     default String errorMessage() {
         return null;

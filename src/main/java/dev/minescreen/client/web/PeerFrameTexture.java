@@ -55,7 +55,12 @@ final class PeerFrameTexture implements AutoCloseable {
     ScreenRenderSource renderSource() {
         uploadLatest();
         return texture == null ? null
-                : new ScreenRenderSource(ScreenRenderType.screen(location), this::uploadLatest);
+                : new ScreenRenderSource(ScreenRenderType.screen(location), this::prepareTexture);
+    }
+
+    private void prepareTexture() {
+        uploadLatest();
+        com.mojang.blaze3d.systems.RenderSystem.setShaderTexture(0, location);
     }
 
     private void scheduleDecode() {

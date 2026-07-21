@@ -8,9 +8,9 @@ displayName="${mod_name}"
 authors="${mod_authors}"
 description='''${mod_description}
 
-Join adjacent screen blocks into high-resolution world canvases, then display tabbed MCEF web pages, local FFmpeg video with positional audio, or interactive RFB/VNC desktops. The crosshair is the only world-screen pointer; handheld/fixed keyboards and cable-linked host computers provide explicit text input and preview control.
+MineScreen uses Montoyo's public-domain WebDisplays 1.12.2 behavior as its feature reference while retaining the MineScreen name, mod id, resource namespace, saved configuration identity, and extension modes. Its primary compatibility target includes joined web screens, screen configuration, keyboards, linkers, laser input, MinePad-like devices, upgrades, controllers, ownership, and multiplayer synchronization.
 
-MineScreen is a client media renderer with an optional matching server installation. Multiplayer servers persist and synchronize screen metadata, playback state, permissions, volume, and optional peer endpoints, but never relay decoded video, browser, VNC framebuffer, audio, player input, local path, or credential data. Optional WEB peer distribution sends compressed frames directly between players. Multiple players may control the same source concurrently by default.'''
+VIDEO, VNC, audio, and peer distribution remain MineScreen extension features. Multiplayer servers persist authoritative screen/peripheral state but never relay decoded media frames.'''
 
 [[mixins]]
 config="minescreen.mixins.json"

@@ -1,0 +1,7 @@
+{
+  "ambientocclusion": false,
+  "textures": {"core":"minescreen:block/cable_core","joint":"minescreen:block/cable_joint","particle":"#core"},
+  "elements": [
+    {"from":[0,6,6],"to":[6,10,10],"faces":{"down":{"texture":"#core"},"up":{"texture":"#core"},"north":{"texture":"#core"},"south":{"texture":"#core"},"west":{"texture":"#joint"},"east":{"texture":"#joint"}}}
+  ]
+}

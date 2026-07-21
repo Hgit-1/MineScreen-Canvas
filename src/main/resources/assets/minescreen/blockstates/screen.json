@@ -3,6 +3,8 @@
     "facing=north": {"model": "minescreen:block/screen"},
     "facing=east": {"model": "minescreen:block/screen", "y": 90},
     "facing=south": {"model": "minescreen:block/screen", "y": 180},
-    "facing=west": {"model": "minescreen:block/screen", "y": 270}
+    "facing=west": {"model": "minescreen:block/screen", "y": 270},
+    "facing=up": {"model": "minescreen:block/screen", "x": 90},
+    "facing=down": {"model": "minescreen:block/screen", "x": 270}
   }
 }

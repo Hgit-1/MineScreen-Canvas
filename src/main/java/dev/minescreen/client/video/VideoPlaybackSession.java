@@ -1,7 +1,5 @@
 package dev.minescreen.client.video;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.UUID;
 
 import com.mojang.blaze3d.platform.NativeImage;
@@ -10,7 +8,6 @@ import dev.minescreen.MineScreen;
 import dev.minescreen.MineScreenConfig;
 import dev.minescreen.ScreenGroup;
 import dev.minescreen.client.ScreenRenderType;
-import dev.minescreen.client.ClientSecurityPolicy;
 import dev.minescreen.client.ScreenVisibility;
 import dev.minescreen.client.audio.PositionalVideoAudio;
 import dev.minescreen.client.content.ClientScreenProfile;
@@ -24,12 +21,14 @@ import net.minecraft.resources.ResourceLocation;
 
 /** Client-side video session with one persistent texture and a decoder-owned three-frame ring. */
 public final class VideoPlaybackSession implements ScreenContentSession {
-    private final FrameRingBuffer ring;
-    private final FfmpegVideoDecoder decoder;
-    private final DynamicTexture texture;
+    private FrameRingBuffer ring;
+    private FfmpegVideoDecoder decoder;
+    private DynamicTexture texture;
     private final ResourceLocation textureLocation;
-    private final int width;
-    private final int height;
+    private final VideoSource source;
+    private final ClientScreenProfile profile;
+    private int width;
+    private int height;
     private final boolean loop;
     private final PositionalVideoAudio audio;
     private long positionMs;
@@ -37,39 +36,41 @@ public final class VideoPlaybackSession implements ScreenContentSession {
     private boolean backendSuspended;
     private long suspendedAtNanos;
     private long suspendedPositionMs;
+    private volatile long lastRenderedNanos;
 
     public VideoPlaybackSession(ScreenGroup group, ClientScreenProfile profile) {
-        Path path = VideoSource.local(profile.source).path().toAbsolutePath().normalize();
-        if (!ClientSecurityPolicy.localFilesAllowed()) {
-            throw new IllegalStateException("Local video requires allow_file_protocol=true");
-        }
-        if (!path.getFileName().toString().toLowerCase(java.util.Locale.ROOT).endsWith(".mp4")) {
-            throw new IllegalStateException("Stage 2 accepts local MP4 files only");
-        }
-        if (!Files.isRegularFile(path) || !Files.isReadable(path)) {
-            throw new IllegalStateException("Video file is not readable: " + path);
-        }
-        int[] dimensions = ScreenResolution.dimensions(group, profile);
+        this(group, profile, VideoSource.resolve(profile.source));
+    }
+
+    /** Finalization constructor used after the bounded asynchronous source preflight. */
+    public VideoPlaybackSession(ScreenGroup group, ClientScreenProfile profile, VideoSource source) {
+        this.source = source;
+        this.profile = profile.copy();
+        int[] dimensions = ScreenResolution.dimensions(group, this.profile);
         width = dimensions[0];
         height = dimensions[1];
         UUID groupId = group.groupId();
-        ring = new FrameRingBuffer(width, height);
         textureLocation = ResourceLocation.fromNamespaceAndPath(MineScreen.MOD_ID,
                 "video/" + groupId.toString().replace('-', '_'));
-        texture = new DynamicTexture(new NativeImage(NativeImage.Format.RGBA, width, height, false));
-        Minecraft.getInstance().getTextureManager().register(textureLocation, texture);
-        decoder = new FfmpegVideoDecoder(new VideoSource(path), ring, width, height,
-                MineScreenConfig.VIDEO_MAX_FPS.get());
         loop = profile.loop;
         paused = profile.paused;
         positionMs = Math.max(0L, profile.positionMs);
+        startVideoBackend();
+        audio = new PositionalVideoAudio(source, loop, profile.volume);
+    }
+
+    private void startVideoBackend() {
+        ring = new FrameRingBuffer(width, height);
+        texture = new DynamicTexture(new NativeImage(NativeImage.Format.RGBA, width, height, false));
+        Minecraft.getInstance().getTextureManager().register(textureLocation, texture);
+        decoder = new FfmpegVideoDecoder(source, ring, width, height,
+                MineScreenConfig.VIDEO_MAX_FPS.get());
         decoder.setLoop(loop);
-        decoder.setPaused(paused);
+        decoder.setPaused(paused || backendSuspended);
         if (positionMs > 0L) {
             decoder.seekMicros(positionMs * 1000L);
         }
         decoder.start();
-        audio = new PositionalVideoAudio(path, loop, profile.volume);
     }
 
     @Override
@@ -79,7 +80,14 @@ public final class VideoPlaybackSession implements ScreenContentSession {
 
     @Override
     public ScreenRenderSource renderSource() {
-        return new ScreenRenderSource(ScreenRenderType.screen(textureLocation), this::uploadLatest);
+        return new ScreenRenderSource(ScreenRenderType.screen(textureLocation), this::prepareTexture);
+    }
+
+    /** Immediate GUI previews do not enter RenderType state, so upload and bind explicitly. */
+    private void prepareTexture() {
+        lastRenderedNanos = System.nanoTime();
+        uploadLatest();
+        RenderSystem.setShaderTexture(0, textureLocation);
     }
 
     /** Render-thread only: upload the newest complete frame into the existing texture id. */
@@ -106,7 +114,12 @@ public final class VideoPlaybackSession implements ScreenContentSession {
         decoder.setTargetFps(visibility.far() ? MineScreenConfig.VIDEO_FAR_FPS.get()
                 : MineScreenConfig.VIDEO_MAX_FPS.get());
         long now = System.nanoTime();
-        if (!visibility.active()) {
+        boolean recentlyRendered = now - lastRenderedNanos
+                < java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(750L);
+        // Always allow the decoder to produce its first complete frame. Suspending a newly-created
+        // session before that point leaves its persistent DynamicTexture transparent forever when
+        // a host preview or large screen enters visibility on the following frame.
+        if (!visibility.active() && !recentlyRendered && decoder.decodedFrames() > 0L) {
             audio.tick(group, false, decoder.positionMs());
             if (!backendSuspended) {
                 positionMs = decoder.positionMs();
@@ -140,6 +153,21 @@ public final class VideoPlaybackSession implements ScreenContentSession {
     }
 
     @Override
+    public void resize(ScreenGroup group) {
+        int[] dimensions = ScreenResolution.dimensions(group, profile);
+        int nextWidth = dimensions[0];
+        int nextHeight = dimensions[1];
+        if (nextWidth == width && nextHeight == height) {
+            return;
+        }
+        positionMs = decoder.positionMs();
+        closeVideoBackend();
+        width = nextWidth;
+        height = nextHeight;
+        startVideoBackend();
+    }
+
+    @Override
     public long positionMs() {
         return decoder.positionMs();
     }
@@ -167,14 +195,31 @@ public final class VideoPlaybackSession implements ScreenContentSession {
     }
 
     @Override
+    public void setVolume(float volume) {
+        audio.setVolume(volume);
+    }
+
+    @Override
     public String errorMessage() {
         return decoder.errorMessage();
     }
 
+    public boolean hasDecodedFrame() {
+        return decoder.decodedFrames() > 0L;
+    }
+
+    public FfmpegVideoDecoder.Stage decoderStage() {
+        return decoder.stage();
+    }
+
     @Override
     public void close() {
-        decoder.close();
+        closeVideoBackend();
         audio.close();
+    }
+
+    private void closeVideoBackend() {
+        decoder.close();
         ring.close();
         Minecraft.getInstance().getTextureManager().release(textureLocation);
     }

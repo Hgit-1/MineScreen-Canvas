@@ -1,0 +1,14 @@
+{
+  "ambientocclusion": false,
+  "textures": {
+    "cabinet":"minescreen:block/controller_chassis",
+    "front":"minescreen:block/controller_panel",
+    "cone":"minescreen:block/screen_face",
+    "particle":"#cabinet"
+  },
+  "elements": [
+    {"from":[2,0,3],"to":[14,16,15],"faces":{"north":{"texture":"#front"},"south":{"texture":"#cabinet"},"east":{"texture":"#cabinet"},"west":{"texture":"#cabinet"},"up":{"texture":"#cabinet"},"down":{"texture":"#cabinet"}}},
+    {"from":[4,2,2.5],"to":[12,10,3],"faces":{"north":{"texture":"#cone"},"east":{"texture":"#cabinet"},"west":{"texture":"#cabinet"},"up":{"texture":"#cabinet"},"down":{"texture":"#cabinet"}}},
+    {"from":[6,12,2.5],"to":[10,16,3],"faces":{"north":{"texture":"#cone"},"east":{"texture":"#cabinet"},"west":{"texture":"#cabinet"},"up":{"texture":"#cabinet"},"down":{"texture":"#cabinet"}}}
+  ]
+}

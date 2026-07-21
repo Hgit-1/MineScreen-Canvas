@@ -1,0 +1,14 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    " RI",
+    "ICI",
+    "I  "
+  ],
+  "key": {
+    "R": {"item": "minecraft:redstone"},
+    "I": {"item": "minecraft:iron_ingot"},
+    "C": {"item": "minecraft:comparator"}
+  },
+  "result": {"id": "minescreen:screen_configurator", "count": 1}
+}

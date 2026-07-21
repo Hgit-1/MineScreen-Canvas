@@ -33,7 +33,24 @@ public final class TightDecoderTestHarness {
             assertBytes("zlib", decoder.decode(new DataInputStream(
                     new ByteArrayInputStream(payload.toByteArray())), 2, 2),
                     rgba(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12));
+
+            Deflater persistent = new Deflater(9);
+            try {
+                byte[] firstPixels = {12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1};
+                byte[] secondPixels = {21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32};
+                assertBytes("persistent-zlib-first",
+                        decoder.decode(compressedInput(0x01,
+                                deflateChunk(persistent, firstPixels)), 2, 2),
+                        rgba(12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1));
+                assertBytes("persistent-zlib-second",
+                        decoder.decode(compressedInput(0x00,
+                                deflateChunk(persistent, secondPixels)), 2, 2),
+                        rgba(21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32));
+            } finally {
+                persistent.end();
+            }
         }
+        RfbClientTestHarness.run();
     }
 
     private static DataInputStream input(int... values) {
@@ -67,6 +84,25 @@ public final class TightDecoderTestHarness {
         } finally {
             deflater.end();
         }
+    }
+
+    private static byte[] deflateChunk(Deflater deflater, byte[] input) {
+        deflater.setInput(input);
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        byte[] buffer = new byte[128];
+        do {
+            int length = deflater.deflate(buffer, 0, buffer.length, Deflater.SYNC_FLUSH);
+            output.write(buffer, 0, length);
+        } while (!deflater.needsInput());
+        return output.toByteArray();
+    }
+
+    private static DataInputStream compressedInput(int control, byte[] compressed) {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        output.write(control);
+        writeCompact(output, compressed.length);
+        output.writeBytes(compressed);
+        return new DataInputStream(new ByteArrayInputStream(output.toByteArray()));
     }
 
     private static void writeCompact(ByteArrayOutputStream output, int value) {

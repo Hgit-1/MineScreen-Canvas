@@ -1,16 +1,14 @@
 package dev.minescreen.client.audio;
 
-import java.nio.file.Path;
-
 import dev.minescreen.ScreenGroup;
 import dev.minescreen.client.video.VideoSource;
 import net.minecraft.client.Minecraft;
 
 /** Owns/restarts the FFmpeg audio worker and Minecraft/OpenAL streaming source for one video. */
 public final class PositionalVideoAudio implements AutoCloseable {
-    private final Path path;
+    private final VideoSource source;
     private final boolean loop;
-    private final float volume;
+    private float volume;
     private FfmpegAudioDecoder decoder;
     private FfmpegPcmAudioStream stream;
     private VideoAudioSound sound;
@@ -18,8 +16,8 @@ public final class PositionalVideoAudio implements AutoCloseable {
     private long clockBaseNanos;
     private boolean unavailable;
 
-    public PositionalVideoAudio(Path path, boolean loop, float volume) {
-        this.path = path;
+    public PositionalVideoAudio(VideoSource source, boolean loop, float volume) {
+        this.source = source;
         this.loop = loop;
         this.volume = Math.max(0.0F, Math.min(1.0F, volume));
     }
@@ -55,9 +53,16 @@ public final class PositionalVideoAudio implements AutoCloseable {
         clockBaseMs = Math.max(0L, positionMs);
     }
 
+    public void setVolume(float volume) {
+        this.volume = Math.max(0.0F, Math.min(1.0F, volume));
+        if (sound != null && !sound.isStopped()) {
+            sound.setBaseVolume(this.volume);
+        }
+    }
+
     private void startPlayback(ScreenGroup group, long positionMs) {
         stopPlayback();
-        decoder = new FfmpegAudioDecoder(new VideoSource(path));
+        decoder = new FfmpegAudioDecoder(source);
         decoder.setLoop(loop);
         decoder.seek(positionMs);
         decoder.start();

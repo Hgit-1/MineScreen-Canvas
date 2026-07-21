@@ -15,23 +15,36 @@ import net.minecraft.world.phys.Vec3;
 /** Tickable positional wrapper; Minecraft's sound executor performs the actual OpenAL calls. */
 public final class VideoAudioSound extends AbstractTickableSoundInstance {
     private final FfmpegPcmAudioStream stream;
+    private float baseVolume;
+    private float distanceGain;
 
     public VideoAudioSound(ScreenGroup group, float volume, FfmpegPcmAudioStream stream) {
         super(MineScreen.VIDEO_AUDIO.get(), SoundSource.RECORDS, SoundInstance.createUnseededRandom());
         this.stream = stream;
         this.looping = false;
         this.relative = false;
-        this.attenuation = SoundInstance.Attenuation.LINEAR;
+        // Range differs between the screen and connected speakers, so MineScreen computes one
+        // listener-relative gain and keeps a single spatial OpenAL source instead of duplicating
+        // the decoded stream for every speaker.
+        this.attenuation = SoundInstance.Attenuation.NONE;
         this.pitch = 1.0F;
         update(group, volume);
     }
 
     public void update(ScreenGroup group, float nextVolume) {
-        Vec3 center = group.bounds().getCenter();
-        this.x = center.x;
-        this.y = center.y;
-        this.z = center.z;
-        this.volume = Math.max(0.0F, Math.min(1.0F, nextVolume));
+        baseVolume = Math.max(0.0F, Math.min(1.0F, nextVolume));
+        SpeakerLinkResolver.Emitter emitter = SpeakerLinkResolver.bestEmitter(group);
+        Vec3 position = emitter.position();
+        this.x = position.x;
+        this.y = position.y;
+        this.z = position.z;
+        distanceGain = emitter.gain();
+        this.volume = baseVolume * distanceGain;
+    }
+
+    public void setBaseVolume(float nextVolume) {
+        baseVolume = Math.max(0.0F, Math.min(1.0F, nextVolume));
+        this.volume = baseVolume * distanceGain;
     }
 
     @Override

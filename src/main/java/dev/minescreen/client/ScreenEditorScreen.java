@@ -1,7 +1,6 @@
 package dev.minescreen.client;
 
 import java.net.URI;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
 
@@ -10,15 +9,21 @@ import org.lwjgl.system.MemoryStack;
 import org.lwjgl.util.tinyfd.TinyFileDialogs;
 
 import dev.minescreen.ScreenGroup;
+import dev.minescreen.MineScreenConfig;
 import dev.minescreen.client.content.ClientScreenProfile;
 import dev.minescreen.client.content.ScreenContentSession;
 import dev.minescreen.client.content.ScreenContentType;
 import dev.minescreen.client.content.ScreenResolution;
+import dev.minescreen.client.content.ScreenRegionLayout;
+import dev.minescreen.client.content.WebSplitLayout;
 import dev.minescreen.client.vnc.RfbEndpoint;
 import dev.minescreen.client.vnc.VncCredentialStore;
+import dev.minescreen.client.vnc.VncRefreshRate;
+import dev.minescreen.client.video.VideoSource;
 import dev.minescreen.client.web.BrowserRequestPolicy;
 import dev.minescreen.client.web.BrowserSession;
 import dev.minescreen.client.ui.MineScreenUiRegistry;
+import dev.minescreen.client.ui.MineScreenAssistant;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
@@ -30,7 +35,9 @@ import net.minecraft.util.FormattedCharSequence;
 public final class ScreenEditorScreen extends Screen {
     private static final int[] RESOLUTION_PRESETS = {100, 75, 50, 33, 25};
 
+    private final ScreenGroup parentGroup;
     private final ScreenGroup group;
+    private final int regionId;
     private final Screen parent;
     private final ClientScreenProfile profile;
     private final Button[] modeButtons = new Button[ScreenContentType.values().length];
@@ -43,12 +50,13 @@ public final class ScreenEditorScreen extends Screen {
     private Button playButton;
     private Button loopButton;
     private Button readOnlyButton;
+    private Button vncFpsButton;
+    private Button vncFpsDownButton;
+    private Button vncFpsUpButton;
     private Button volumeButton;
     private Button accessButton;
     private Button resolutionButton;
-    private Button infoPageButton;
-    private Button contentPageButton;
-    private Button previewPageButton;
+    private Button webSplitButton;
     private Button webBackButton;
     private Button webForwardButton;
     private Button webReloadButton;
@@ -62,20 +70,36 @@ public final class ScreenEditorScreen extends Screen {
     private int progressTop;
     private int contentLeft;
     private int contentWidth;
-    private EditorPage page = EditorPage.CONTENT;
+    private int observedWebTab = -1;
+    private String pendingWebAddress;
+    private long pendingWebAddressUntilNanos;
 
     public ScreenEditorScreen(ScreenGroup group) {
         this(group, null);
     }
 
     public ScreenEditorScreen(ScreenGroup group, Screen parent) {
+        this(group, 0, parent);
+    }
+
+    public ScreenEditorScreen(ScreenGroup parentGroup, int regionId, Screen parent) {
         super(Component.translatable("screen.minescreen.editor"));
-        this.group = group;
+        this.parentGroup = parentGroup;
+        this.regionId = Math.max(0, Math.min(ScreenRegionLayout.MAX_REGIONS - 1, regionId));
+        ScreenRegionLayout.Canvas canvas = ScreenRegionLayout.canvas(parentGroup,
+                ScreenContentManager.profile(parentGroup.groupId()), this.regionId);
+        this.group = canvas == null ? parentGroup : canvas.group();
         this.parent = parent;
-        this.profile = ScreenContentManager.profile(group.groupId()).copy();
+        this.profile = ScreenContentManager.profile(parentGroup.groupId(), this.regionId).copy();
         if (profile.contentType == null) {
             profile.contentType = ScreenContentType.IDLE;
         }
+        profile.normalizeSources();
+    }
+
+    @Override
+    public boolean isPauseScreen() {
+        return false;
     }
 
     @Override
@@ -84,22 +108,10 @@ public final class ScreenEditorScreen extends Screen {
         panelHeight = Math.min(350, height - 12);
         panelLeft = (width - panelWidth) / 2;
         panelTop = (height - panelHeight) / 2;
-        contentLeft = panelLeft + Math.min(124, Math.max(92, panelWidth / 5));
-        contentWidth = panelLeft + panelWidth - 14 - contentLeft;
+        contentLeft = panelLeft + 14;
+        contentWidth = panelWidth - 28;
         int innerLeft = contentLeft;
         int innerWidth = contentWidth;
-
-        int sideLeft = panelLeft + 10;
-        int sideWidth = Math.max(76, contentLeft - sideLeft - 10);
-        infoPageButton = addRenderableWidget(MineScreenButton.create(
-                Component.translatable("screen.minescreen.computer.info"),
-                button -> selectPage(EditorPage.INFO), sideLeft, panelTop + 44, sideWidth, 20));
-        contentPageButton = addRenderableWidget(MineScreenButton.create(
-                Component.translatable("screen.minescreen.computer.content"),
-                button -> selectPage(EditorPage.CONTENT), sideLeft, panelTop + 70, sideWidth, 20));
-        previewPageButton = addRenderableWidget(MineScreenButton.create(
-                Component.translatable("screen.minescreen.computer.preview"),
-                button -> selectPage(EditorPage.PREVIEW), sideLeft, panelTop + 96, sideWidth, 20));
 
         int resolutionWidth = Math.min(170, innerWidth / 3);
         resolutionButton = addRenderableWidget(MineScreenButton.create(resolutionLabel(),
@@ -129,8 +141,10 @@ public final class ScreenEditorScreen extends Screen {
 
         sourceBox = new MineScreenEditBox(font, innerLeft, panelTop + 82, innerWidth, 20,
                 Component.translatable("screen.minescreen.source"));
-        sourceBox.setValue(profile.source == null ? "" : profile.source);
-        sourceBox.setMaxLength(4096);
+        // Signed CDN/video URLs can contain large query strings. This value is client-local and
+        // is not serialized through the 2 KiB multiplayer screen-state payload.
+        sourceBox.setMaxLength(VideoSource.MAX_INPUT_LENGTH);
+        sourceBox.setValue(profile.sourceFor(profile.contentType));
         sourceBox.setResponder(value -> clearTransientError());
         addRenderableWidget(sourceBox);
 
@@ -157,9 +171,25 @@ public final class ScreenEditorScreen extends Screen {
                 Component.translatable("screen.minescreen.web.reload"),
                 button -> browserAction(BrowserAction.RELOAD), innerLeft + (navWidth + 4) * 2,
                 actionTop, navWidth, 20));
+        webSplitButton = addRenderableWidget(MineScreenButton.create(splitLayoutLabel(),
+                button -> cycleSplitLayout(), innerLeft + (navWidth + 4) * 3,
+                actionTop, 116, 20));
         webGoButton = addRenderableWidget(MineScreenButton.create(
                 Component.translatable("screen.minescreen.web.go"), button -> loadWebAddress(),
                 panelLeft + panelWidth - 126, actionTop, 112, 20));
+        int vncFpsTop = panelTop + 166;
+        int vncFpsWidth = Math.min(270, innerWidth);
+        int vncFpsStepWidth = 30;
+        int vncFpsGap = 4;
+        int vncFpsValueWidth = vncFpsWidth - vncFpsStepWidth * 2 - vncFpsGap * 2;
+        vncFpsDownButton = addRenderableWidget(MineScreenButton.create(Component.literal("−"),
+                button -> adjustVncFps(-1), innerLeft, vncFpsTop, vncFpsStepWidth, 20));
+        vncFpsButton = addRenderableWidget(MineScreenButton.create(vncFpsLabel(),
+                button -> resetVncFps(), innerLeft + vncFpsStepWidth + vncFpsGap, vncFpsTop,
+                vncFpsValueWidth, 20));
+        vncFpsUpButton = addRenderableWidget(MineScreenButton.create(Component.literal("+"),
+                button -> adjustVncFps(1), innerLeft + vncFpsWidth - vncFpsStepWidth,
+                vncFpsTop, vncFpsStepWidth, 20));
 
         passwordBox = new MineScreenEditBox(font, innerLeft, panelTop + 136,
                 Math.min(210, innerWidth), 20,
@@ -199,6 +229,7 @@ public final class ScreenEditorScreen extends Screen {
         webForwardButton.active = browser != null && browser.canGoForward();
         webReloadButton.active = browser != null;
         updateWebTabs(browser);
+        syncWebAddress(browser, false);
     }
 
     @Override
@@ -217,61 +248,38 @@ public final class ScreenEditorScreen extends Screen {
                 0xFF1A202B, 0xFF0F141D);
         graphics.fill(panelLeft, panelTop, panelLeft + 4, panelTop + panelHeight, 0xFFFFD43B);
         graphics.fill(panelLeft + 4, panelTop + 30, panelLeft + panelWidth, panelTop + 31, 0xFF394657);
-        graphics.fill(panelLeft + 4, panelTop + 31, contentLeft - 8,
-                panelTop + panelHeight, 0xFF111822);
-        graphics.fill(contentLeft - 8, panelTop + 31, contentLeft - 7,
-                panelTop + panelHeight, 0xFF344357);
-        graphics.drawString(font, title, panelLeft + 34, panelTop + 12, 0xFFF4F7FB, false);
-        int markerTop = switch (page) {
-            case INFO -> panelTop + 44;
-            case CONTENT -> panelTop + 70;
-            case PREVIEW -> panelTop + 96;
-        };
-        graphics.fill(panelLeft + 7, markerTop, panelLeft + 9, markerTop + 20, 0xFFFFD43B);
+        graphics.drawString(font, title, panelLeft + 18, panelTop + 12, 0xFFF4F7FB, false);
+        if (MineScreenConfig.UI_SHOW_MASCOT.get()
+                && resolutionButton.getX() - panelLeft > 250) {
+            MineScreenAssistant.drawGui(graphics, resolutionButton.getX() - 30,
+                    panelTop + 1, 2, 220);
+        }
+        if (regionId > 0) {
+            graphics.drawString(font, Component.translatable("screen.minescreen.region.editing",
+                    regionId), panelLeft + 152, panelTop + 12, 0xFFFFD43B, false);
+        }
 
-        if (page == EditorPage.INFO) {
-            int[] size = ScreenResolution.dimensions(group, profile);
-            graphics.drawString(font, Component.translatable("screen.minescreen.group_summary",
-                    group.columns(), group.rows(), shortId()), contentLeft, panelTop + 50,
-                    0xFFE2EAF4, false);
-            graphics.drawString(font, Component.translatable(
-                    "screen.minescreen.computer.actual_resolution", size[0], size[1]),
-                    contentLeft, panelTop + 68, 0xFF9FB3C8, false);
-            graphics.drawWordWrap(font,
-                    Component.translatable("screen.minescreen.computer.tile_help"),
-                    contentLeft, panelTop + 92, contentWidth, 0xFF9FB3C8);
-        } else if (page == EditorPage.PREVIEW) {
-            ScreenContentManager.requestHostKeepAlive(group.groupId());
-            int previewTop = panelTop + 44;
-            int previewHeight = Math.max(72, panelHeight - 88);
-            graphics.fill(contentLeft - 2, previewTop - 2,
-                    contentLeft + contentWidth + 2, previewTop + previewHeight + 2, 0xFF526177);
-            ScreenPreviewRenderer.draw(graphics, group, contentLeft, previewTop,
-                    contentWidth, previewHeight);
-        } else if (profile.contentType != ScreenContentType.WEB) {
+        if (profile.contentType != ScreenContentType.WEB) {
             graphics.drawString(font, Component.translatable("screen.minescreen.group_summary",
                     group.columns(), group.rows(), shortId()), contentLeft, panelTop + 63,
                     0xFF93A6BB, false);
         }
 
-        if (page == EditorPage.CONTENT && sourceBox.visible
-                && profile.contentType != ScreenContentType.WEB) {
+        if (sourceBox.visible && profile.contentType != ScreenContentType.WEB) {
             graphics.drawString(font, sourceLabel(), contentLeft, panelTop + 72,
                     0xFFD8E2EE, false);
         }
-        if (page == EditorPage.CONTENT && passwordBox.visible) {
+        if (passwordBox.visible) {
             graphics.drawString(font, Component.translatable("screen.minescreen.vnc_password"),
                     contentLeft, panelTop + 128, 0xFF9EB0C4, false);
         }
-        if (page == EditorPage.CONTENT && mediaIdBox.visible) {
+        if (mediaIdBox.visible) {
             graphics.drawString(font, Component.translatable("screen.minescreen.media_id"),
                     contentLeft, panelTop + 128, 0xFF9EB0C4, false);
         }
 
-        if (page == EditorPage.CONTENT) {
-            renderContentStatus(graphics);
-            renderGuide(graphics);
-        }
+        renderContentStatus(graphics);
+        renderGuide(graphics);
         renderWidgetsDirect(graphics, mouseX, mouseY, partialTick);
     }
 
@@ -291,7 +299,7 @@ public final class ScreenEditorScreen extends Screen {
     }
 
     private void renderContentStatus(GuiGraphics graphics) {
-        ScreenContentSession session = ScreenContentManager.session(group.groupId());
+        ScreenContentSession session = ScreenContentManager.session(parentGroup.groupId(), regionId);
         int innerLeft = contentLeft;
         int innerRight = contentLeft + contentWidth;
         if (profile.contentType == ScreenContentType.VIDEO) {
@@ -321,7 +329,7 @@ public final class ScreenEditorScreen extends Screen {
 
     private void renderGuide(GuiGraphics graphics) {
         int x = contentLeft;
-        int y = panelTop + 194;
+        int y = panelTop + 198;
         int width = contentWidth;
         Component guide = guideText();
         for (FormattedCharSequence line : font.split(guide, width)) {
@@ -338,10 +346,10 @@ public final class ScreenEditorScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (page == EditorPage.CONTENT && profile.contentType == ScreenContentType.VIDEO && button == 0
+        if (profile.contentType == ScreenContentType.VIDEO && button == 0
                 && mouseY >= progressTop - 3 && mouseY <= progressTop + 10
                 && mouseX >= contentLeft && mouseX <= contentLeft + contentWidth) {
-            ScreenContentSession session = ScreenContentManager.session(group.groupId());
+            ScreenContentSession session = ScreenContentManager.session(parentGroup.groupId(), regionId);
             long duration = session == null ? 0L : session.durationMs();
             if (duration > 0L) {
                 long target = Math.round((mouseX - contentLeft)
@@ -368,7 +376,8 @@ public final class ScreenEditorScreen extends Screen {
     }
 
     private void setMode(ScreenContentType mode) {
-        profile.contentType = mode;
+        profile.switchContentType(mode, sourceBox.getValue());
+        sourceBox.setValue(profile.sourceFor(mode));
         status = Component.translatable("screen.minescreen.status.mode_changed");
         statusColor = 0xFF9FD4FF;
         updateModeControls();
@@ -400,7 +409,7 @@ public final class ScreenEditorScreen extends Screen {
             filters.put(stack.UTF8("*.mp4")).flip();
             selected = TinyFileDialogs.tinyfd_openFileDialog(
                     Component.translatable("screen.minescreen.choose_file").getString(),
-                    profile.source == null ? "" : profile.source, filters, "MP4 video", false);
+                    sourceBox.getValue(), filters, "MP4 video", false);
         }
         if (selected != null && !selected.isBlank()) {
             sourceBox.setValue(Path.of(selected).toAbsolutePath().normalize().toString());
@@ -410,7 +419,7 @@ public final class ScreenEditorScreen extends Screen {
 
     private void togglePaused() {
         profile.paused = !profile.paused;
-        ScreenContentSession session = ScreenContentManager.session(group.groupId());
+        ScreenContentSession session = ScreenContentManager.session(parentGroup.groupId(), regionId);
         if (session != null) {
             session.setPaused(profile.paused);
         }
@@ -424,12 +433,33 @@ public final class ScreenEditorScreen extends Screen {
 
     private void cycleVolume() {
         profile.volume = profile.volume >= 0.99F ? 0.0F : Math.min(1.0F, profile.volume + 0.25F);
+        ScreenContentManager.updateVolume(parentGroup.groupId(), regionId, profile.volume);
         volumeButton.setMessage(volumeLabel());
+    }
+
+    private void cycleSplitLayout() {
+        profile.webSplitLayout = (profile.webSplitLayout == null
+                ? WebSplitLayout.SINGLE : profile.webSplitLayout).next();
+        ScreenContentManager.updateWebSplitLayout(parentGroup.groupId(), regionId,
+                profile.webSplitLayout);
+        webSplitButton.setMessage(splitLayoutLabel());
+        success("screen.minescreen.status.split_changed");
     }
 
     private void toggleReadOnly() {
         profile.vncReadOnly = !profile.vncReadOnly;
         readOnlyButton.setMessage(readOnlyLabel());
+    }
+
+    private void adjustVncFps(int direction) {
+        profile.vncFps = direction < 0 ? VncRefreshRate.previous(profile.vncFps)
+                : VncRefreshRate.next(profile.vncFps);
+        vncFpsButton.setMessage(vncFpsLabel());
+    }
+
+    private void resetVncFps() {
+        profile.vncFps = 0;
+        vncFpsButton.setMessage(vncFpsLabel());
     }
 
     private void cycleAccess() {
@@ -455,6 +485,11 @@ public final class ScreenEditorScreen extends Screen {
     }
 
     private void loadWebAddress() {
+        if (profile.isVideoSource(sourceBox.getValue())) {
+            error("screen.minescreen.error.web_uses_video_source");
+            sourceBox.setValue(profile.sourceFor(ScreenContentType.WEB));
+            return;
+        }
         String url = normalizeWebUrl(sourceBox.getValue());
         sourceBox.setValue(url);
         if (!validWebUrl(url)) {
@@ -463,23 +498,31 @@ public final class ScreenEditorScreen extends Screen {
         BrowserSession existing = browserSession();
         if (Screen.hasShiftDown() && existing != null) {
             if (existing.openTab(url, true)) {
-                if (!profile.webTabs.contains(url)) {
-                    profile.webTabs.add(url);
-                }
-                ScreenContentManager.saveLocalProfile(group.groupId(), profile);
+                captureBrowserProfile(existing, url, true, null);
+                ScreenContentManager.saveLocalProfile(parentGroup.groupId(), regionId, profile);
+                pendingWebAddress = url;
+                pendingWebAddressUntilNanos = System.nanoTime()
+                        + java.util.concurrent.TimeUnit.SECONDS.toNanos(3L);
                 success("screen.minescreen.status.web_tab_opened");
             }
             return;
         }
-        profile.source = url;
-        ScreenContentManager.updateProfile(group.groupId(), profile);
-        ScreenContentManager.sourceFor(group);
-        BrowserSession browser = browserSession();
-        if (browser != null && browser.navigate(url)) {
+        String previousActive = existing == null ? null : existing.restorableActiveUrl();
+        if (existing != null && existing.navigate(url)) {
+            captureBrowserProfile(existing, url, false, previousActive);
+            ScreenContentManager.saveLocalProfile(parentGroup.groupId(), regionId, profile);
+            pendingWebAddress = url;
+            pendingWebAddressUntilNanos = System.nanoTime()
+                    + java.util.concurrent.TimeUnit.SECONDS.toNanos(3L);
             success("screen.minescreen.status.web_loaded");
-        } else if (browser == null) {
-            error("screen.minescreen.error.browser_not_running");
+            return;
         }
+        // The asynchronous wrapper may exist before Chromium is finalized. Recreate only in that
+        // loading case; a live browser always navigates in place so its other tabs survive.
+        profile.setSourceFor(ScreenContentType.WEB, url);
+        ScreenContentManager.updateProfile(parentGroup.groupId(), regionId, profile);
+        ScreenContentManager.sourceFor(parentGroup, regionId);
+        success("screen.minescreen.status.web_loaded");
     }
 
     private void saveAndClose() {
@@ -497,6 +540,11 @@ public final class ScreenEditorScreen extends Screen {
             }
             profile.mediaId = mediaId;
         } else if (profile.contentType == ScreenContentType.WEB) {
+            if (profile.isVideoSource(source)) {
+                error("screen.minescreen.error.web_uses_video_source");
+                sourceBox.setValue(profile.sourceFor(ScreenContentType.WEB));
+                return;
+            }
             source = normalizeWebUrl(source);
             sourceBox.setValue(source);
             if (!validWebUrl(source)) {
@@ -516,12 +564,12 @@ public final class ScreenEditorScreen extends Screen {
             VncCredentialStore.put(group.groupId(),
                     new VncCredentialStore.Credential("", passwordBox.getValue()));
         }
-        profile.source = source;
-        ScreenContentSession current = ScreenContentManager.session(group.groupId());
+        profile.setSourceFor(profile.contentType, source);
+        ScreenContentSession current = ScreenContentManager.session(parentGroup.groupId(), regionId);
         if (current != null && profile.contentType == ScreenContentType.VIDEO) {
             profile.positionMs = current.positionMs();
         }
-        ScreenContentManager.updateProfile(group.groupId(), profile);
+        ScreenContentManager.updateProfile(parentGroup.groupId(), regionId, profile);
         minecraft.setScreen(parent);
     }
 
@@ -531,22 +579,25 @@ public final class ScreenEditorScreen extends Screen {
     }
 
     private boolean validateVideo(String source) {
-        if (!ClientSecurityPolicy.localFilesAllowed()) {
-            error("screen.minescreen.error.local_files_blocked");
-            return false;
-        }
         try {
-            Path path = Path.of(source);
-            if (!source.toLowerCase(Locale.ROOT).endsWith(".mp4")
-                    || !Files.isRegularFile(path) || !Files.isReadable(path)) {
-                error("screen.minescreen.error.video_file");
-                return false;
-            }
+            VideoSource.resolve(source);
             return true;
-        } catch (RuntimeException invalidPath) {
-            error("screen.minescreen.error.video_file");
+        } catch (VideoSource.ValidationException invalidSource) {
+            error(videoErrorKey(invalidSource.problem()));
             return false;
         }
+    }
+
+    private static String videoErrorKey(VideoSource.Problem problem) {
+        return switch (problem) {
+            case BLOCKED_FILE -> "screen.minescreen.error.local_files_blocked";
+            case INVALID_FILE -> "screen.minescreen.error.video_file";
+            case EMPTY -> "screen.minescreen.error.video_source";
+            case TOO_LONG -> "screen.minescreen.error.video_source_too_long";
+            case INVALID_URL -> "screen.minescreen.error.video_url";
+            case BLOCKED_URL -> "screen.minescreen.error.video_blocked";
+            case UNSUPPORTED_SCHEME -> "screen.minescreen.error.video_scheme";
+        };
     }
 
     private boolean validWebUrl(String source) {
@@ -568,12 +619,14 @@ public final class ScreenEditorScreen extends Screen {
     }
 
     private void updateModeControls() {
-        boolean contentPage = page == EditorPage.CONTENT;
+        boolean contentPage = true;
         boolean idle = profile.contentType == ScreenContentType.IDLE;
         boolean video = profile.contentType == ScreenContentType.VIDEO;
         boolean web = profile.contentType == ScreenContentType.WEB;
         boolean vnc = profile.contentType == ScreenContentType.VNC;
         sourceBox.visible = contentPage && !idle;
+        // Mode previews must not destructively shorten an existing video path or signed URL.
+        sourceBox.setMaxLength(VideoSource.MAX_INPUT_LENGTH);
         sourceBox.setEditable(contentPage && !idle);
         chooseButton.visible = chooseButton.active = contentPage && video;
         playButton.visible = playButton.active = contentPage && video;
@@ -582,6 +635,7 @@ public final class ScreenEditorScreen extends Screen {
         webBackButton.visible = contentPage && web;
         webForwardButton.visible = contentPage && web;
         webReloadButton.visible = contentPage && web;
+        webSplitButton.visible = webSplitButton.active = contentPage && web;
         webGoButton.visible = webGoButton.active = contentPage && web;
         for (BrowserTabButton tabButton : webTabButtons) {
             tabButton.visible = contentPage && web;
@@ -589,26 +643,20 @@ public final class ScreenEditorScreen extends Screen {
         passwordBox.visible = contentPage && vnc;
         passwordBox.setEditable(contentPage && vnc);
         readOnlyButton.visible = readOnlyButton.active = contentPage && vnc;
+        vncFpsButton.visible = vncFpsButton.active = contentPage && vnc;
+        vncFpsDownButton.visible = vncFpsDownButton.active = contentPage && vnc;
+        vncFpsUpButton.visible = vncFpsUpButton.active = contentPage && vnc;
         mediaIdBox.visible = contentPage && video;
         mediaIdBox.setEditable(contentPage && video);
-        accessButton.visible = accessButton.active = contentPage && !idle;
-        resolutionButton.visible = resolutionButton.active = page == EditorPage.INFO
-                || contentPage && (video || web);
+        accessButton.visible = accessButton.active = contentPage && !idle && regionId == 0;
+        resolutionButton.visible = resolutionButton.active = contentPage && (video || web);
         for (int i = 0; i < modeButtons.length; i++) {
             modeButtons[i].visible = contentPage;
             modeButtons[i].active = ScreenContentType.values()[i] != profile.contentType;
         }
-        infoPageButton.active = page != EditorPage.INFO;
-        contentPageButton.active = page != EditorPage.CONTENT;
-        previewPageButton.active = page != EditorPage.PREVIEW;
         status = Component.translatable("screen.minescreen.guide." + profile.contentType.name()
                 .toLowerCase(Locale.ROOT));
         statusColor = 0xFF8FCBFF;
-    }
-
-    private void selectPage(EditorPage next) {
-        page = next;
-        updateModeControls();
     }
 
     private Component guideText() {
@@ -622,7 +670,7 @@ public final class ScreenEditorScreen extends Screen {
     }
 
     private BrowserSession browserSession() {
-        ScreenContentSession session = ScreenContentManager.session(group.groupId());
+        ScreenContentSession session = ScreenContentManager.session(parentGroup.groupId(), regionId);
         return session instanceof BrowserSession browser ? browser : null;
     }
 
@@ -661,12 +709,13 @@ public final class ScreenEditorScreen extends Screen {
         }
         if (Screen.hasShiftDown()) {
             browser.closeTab(index);
-            profile.webTabs = browser.tabs().stream().skip(1).map(BrowserSession.TabInfo::url)
-                    .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
-            ScreenContentManager.saveLocalProfile(group.groupId(), profile);
         } else {
             browser.activateTab(index);
         }
+        pendingWebAddress = null;
+        syncWebAddress(browser, true);
+        captureBrowserProfile(browser, browser.currentUrl(), true, null);
+        ScreenContentManager.saveBrowserState(parentGroup.groupId(), regionId, browser);
         updateWebTabs(browser);
     }
 
@@ -677,10 +726,65 @@ public final class ScreenEditorScreen extends Screen {
             return;
         }
         browser.closeTab(index);
-        profile.webTabs = browser.tabs().stream().skip(1).map(BrowserSession.TabInfo::url)
-                .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
-        ScreenContentManager.saveLocalProfile(group.groupId(), profile);
+        pendingWebAddress = null;
+        syncWebAddress(browser, true);
+        captureBrowserProfile(browser, browser.currentUrl(), true, null);
+        ScreenContentManager.saveBrowserState(parentGroup.groupId(), regionId, browser);
         updateWebTabs(browser);
+    }
+
+    private void syncWebAddress(BrowserSession browser, boolean force) {
+        if (profile.contentType != ScreenContentType.WEB || browser == null || sourceBox == null) {
+            observedWebTab = -1;
+            return;
+        }
+        int active = browser.activeTabIndex();
+        boolean tabChanged = active != observedWebTab;
+        if (!force && !tabChanged && sourceBox.isFocused()) {
+            return;
+        }
+        String url = browser.currentUrl();
+        if (url == null || url.isBlank() || url.equalsIgnoreCase("about:blank")) {
+            // Retry next tick until a newly-created MCEF tab exposes its real URL.
+            return;
+        }
+        if (pendingWebAddress != null) {
+            if (url.equals(pendingWebAddress)) {
+                pendingWebAddress = null;
+            } else if (!tabChanged && System.nanoTime() < pendingWebAddressUntilNanos) {
+                return;
+            } else {
+                pendingWebAddress = null;
+            }
+        }
+        observedWebTab = active;
+        if (!url.equals(sourceBox.getValue())) {
+            sourceBox.setValue(url);
+        }
+        profile.setSourceFor(ScreenContentType.WEB, url);
+        if (tabChanged) {
+            ScreenContentManager.saveBrowserState(parentGroup.groupId(), regionId, browser);
+        }
+    }
+
+    private void captureBrowserProfile(BrowserSession browser, String requestedActiveUrl,
+            boolean keepPreviousActive, String replacedActiveUrl) {
+        String active = requestedActiveUrl == null || requestedActiveUrl.isBlank()
+                ? browser.restorableActiveUrl() : requestedActiveUrl;
+        String previousActive = replacedActiveUrl == null
+                ? browser.restorableActiveUrl() : replacedActiveUrl;
+        profile.setSourceFor(ScreenContentType.WEB, active);
+        java.util.LinkedHashSet<String> background = new java.util.LinkedHashSet<>();
+        for (String url : browser.restorableUrls()) {
+            if (url != null && !url.isBlank() && !url.equalsIgnoreCase("about:blank")
+                    && !url.equals(active)) {
+                if (!keepPreviousActive && url.equals(previousActive)) {
+                    continue;
+                }
+                background.add(url);
+            }
+        }
+        profile.webTabs = new java.util.ArrayList<>(background);
     }
 
     private Component sourceLabel() {
@@ -716,8 +820,22 @@ public final class ScreenEditorScreen extends Screen {
                 ? "screen.minescreen.vnc.read_only" : "screen.minescreen.vnc.control");
     }
 
+    private Component vncFpsLabel() {
+        int fps = VncRefreshRate.resolve(profile);
+        return Component.translatable(profile.vncFps <= 0
+                ? "screen.minescreen.vnc.fps_default" : "screen.minescreen.vnc.fps", fps);
+    }
+
     private Component volumeLabel() {
         return Component.translatable("screen.minescreen.video.volume", Math.round(profile.volume * 100.0F));
+    }
+
+    private Component splitLayoutLabel() {
+        WebSplitLayout layout = profile.webSplitLayout == null
+                ? WebSplitLayout.SINGLE : profile.webSplitLayout;
+        return Component.translatable("screen.minescreen.web.split",
+                Component.translatable("screen.minescreen.web.split."
+                        + layout.name().toLowerCase(Locale.ROOT)));
     }
 
     private Component accessLabel() {
@@ -768,9 +886,4 @@ public final class ScreenEditorScreen extends Screen {
         RELOAD
     }
 
-    private enum EditorPage {
-        INFO,
-        CONTENT,
-        PREVIEW
-    }
 }

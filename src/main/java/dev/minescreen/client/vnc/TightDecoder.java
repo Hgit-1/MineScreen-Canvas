@@ -158,6 +158,9 @@ final class TightDecoder implements AutoCloseable {
         byte[] compressed = readExact(input, compressedLength);
         byte[] decoded = new byte[expectedLength];
         Inflater inflater = streams[streamId];
+        if (!inflater.needsInput()) {
+            throw new IOException("Tight zlib stream retained unread input");
+        }
         inflater.setInput(compressed);
         int offset = 0;
         try {
@@ -180,6 +183,26 @@ final class TightDecoder implements AutoCloseable {
         }
         if (offset != decoded.length) {
             throw new EOFException("Incomplete Tight rectangle: " + offset + "/" + decoded.length);
+        }
+        // Tight uses persistent zlib streams with Z_SYNC_FLUSH. The expected pixel count can be
+        // reached before Inflater consumes the flush marker at the end of this compact payload.
+        // Drain that marker now; otherwise the next rectangle cannot safely call setInput().
+        byte[] drain = new byte[1];
+        try {
+            while (!inflater.needsInput() && !inflater.finished()) {
+                int extra = inflater.inflate(drain);
+                if (extra > 0) {
+                    throw new IOException("Tight zlib stream produced excess pixel data");
+                }
+                if (inflater.needsDictionary()) {
+                    throw new IOException("Tight zlib stream requested a dictionary");
+                }
+                if (!inflater.needsInput()) {
+                    throw new IOException("Tight zlib stream did not consume its flush marker");
+                }
+            }
+        } catch (DataFormatException exception) {
+            throw new IOException("Invalid Tight zlib flush marker", exception);
         }
         return decoded;
     }

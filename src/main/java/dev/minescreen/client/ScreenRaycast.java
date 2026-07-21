@@ -18,6 +18,8 @@ import net.neoforged.neoforge.client.event.ClientTickEvent;
 import dev.minescreen.MineScreen;
 import dev.minescreen.ScreenGeometry;
 import dev.minescreen.ScreenGroup;
+import dev.minescreen.client.content.ClientScreenProfile;
+import dev.minescreen.client.content.ScreenRegionLayout;
 
 /**
  * Analytical ray/plane picker. It deliberately does not depend on Minecraft's block hit result:
@@ -103,12 +105,17 @@ public final class ScreenRaycast {
         Vec3 point = rayStart.add(rayDirection.scale(distance));
         Vec3 local = point.subtract(planePoint);
         double horizontal = local.dot(ScreenGeometry.right(group.facing()));
-        double vertical = local.dot(ScreenGeometry.up());
+        double vertical = local.dot(ScreenGeometry.up(group.facing()));
         double u = horizontal / group.columns();
         double v = 1.0D - vertical / group.rows();
         if (u < 0.0D || u > 1.0D || v < 0.0D || v > 1.0D) {
             return null;
         }
+        int regionId = 0;
+        double regionU = u;
+        double regionV = v;
+        ScreenHostNetworkManager.HostNetwork host = ScreenHostNetworkManager.networkFor(group);
+        boolean joinedCanvas = host != null && host.panoramic();
         if (group.legacyAnchor()) {
             if (!ScreenTileIndex.isLive(level, group.master(), group.facing())) {
                 return null;
@@ -118,18 +125,29 @@ public final class ScreenRaycast {
                     Math.max(0, (int) Math.floor(horizontal)));
             int row = Math.min(group.rows() - 1, Math.max(0, (int) Math.floor(vertical)));
             BlockPos tile = group.origin()
-                    .relative(ScreenGeometry.rightDirection(group.facing()), column).above(row);
+                    .relative(ScreenGeometry.rightDirection(group.facing()), column)
+                    .relative(ScreenGeometry.upDirection(group.facing()), row);
+            ClientScreenProfile profile = ScreenContentManager.profile(group.groupId());
             if (!group.tiles().contains(tile)
                     || !ScreenTileIndex.isLive(level, tile, group.facing())
-                    || ScreenContentManager.profile(group.groupId()).disabledTiles
-                            .contains(tile.asLong())) {
+                    || profile.disabledTiles.contains(tile.asLong())) {
                 return null;
             }
+            if (!joinedCanvas) {
+                regionId = ScreenRegionLayout.regionAt(profile, tile);
+                ScreenRegionLayout.Canvas canvas = ScreenRegionLayout.canvas(group, profile, regionId);
+                if (canvas == null) {
+                    return null;
+                }
+                regionU = (horizontal - canvas.minColumn()) / canvas.columns();
+                regionV = 1.0D - (vertical - canvas.minRow()) / canvas.rows();
+            }
         }
-        return new ScreenHit(group.groupId(), group.master(), u, v, distance, group.facing());
+        return new ScreenHit(group.groupId(), group.master(), regionId, regionU, regionV,
+                distance, group.facing());
     }
 
-    public record ScreenHit(java.util.UUID groupId, BlockPos master, double u, double v,
-            double distance, Direction facing) {
+    public record ScreenHit(java.util.UUID groupId, BlockPos master, int regionId,
+            double u, double v, double distance, Direction facing) {
     }
 }

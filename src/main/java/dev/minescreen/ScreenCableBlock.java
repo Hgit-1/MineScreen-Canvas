@@ -8,6 +8,7 @@ import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.block.PipeBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 
 /** Six-direction data conduit whose arms follow adjacent conduits/endpoints automatically. */
 public final class ScreenCableBlock extends PipeBlock {
@@ -54,7 +55,13 @@ public final class ScreenCableBlock extends PipeBlock {
     private static boolean connects(BlockState neighbor) {
         return neighbor.is(MineScreen.SCREEN_CABLE_BLOCK.get())
                 || neighbor.is(MineScreen.SCREEN_BLOCK.get())
+                || neighbor.is(MineScreen.SPEAKER_BLOCK.get())
                 || neighbor.is(MineScreen.COMPUTER_BLOCK.get())
-                || neighbor.is(MineScreen.FIXED_KEYBOARD_BLOCK.get());
+                || neighbor.is(MineScreen.FIXED_KEYBOARD_BLOCK.get())
+                // Redstone sources are power inputs as well as visual cable endpoints. Lever
+                // orientation is deliberately ignored, so any adjacent face can feed the cable.
+                || neighbor.isSignalSource()
+                || neighbor.hasProperty(BlockStateProperties.POWERED)
+                || neighbor.is(net.minecraft.world.level.block.Blocks.REDSTONE_WIRE);
     }
 }

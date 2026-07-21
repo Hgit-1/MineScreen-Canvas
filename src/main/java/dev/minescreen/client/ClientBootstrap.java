@@ -14,6 +14,9 @@ public final class ClientBootstrap {
         modBus.addListener(ScreenTextureManager::onClientSetup);
         modBus.addListener(ClientEvents::onRegisterRenderers);
         modContainer.registerExtensionPoint(IConfigScreenFactory.class,
-                (container, parent) -> new ConfigurationScreen(container, parent));
+                (container, parent) -> new ConfigurationScreen(container, parent,
+                        (configuration, type, config, title) ->
+                                new MineScreenConfigurationSection(configuration, type,
+                                        config, title)));
     }
 }

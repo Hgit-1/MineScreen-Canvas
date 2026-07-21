@@ -2,6 +2,8 @@ package dev.minescreen;
 
 import java.util.List;
 
+import net.minecraft.network.chat.Component;
+import net.neoforged.neoforge.common.TranslatableEnum;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
 /** Common config shared by the optional server state channel and the client renderer. */
@@ -44,6 +46,12 @@ public final class MineScreenConfig {
     public static final ModConfigSpec.IntValue MAX_RENDER_DISTANCE = BUILDER.comment(
             "Distance at which decoder/browser rendering is paused.")
             .defineInRange("max_render_distance", 96, 8, 256);
+    public static final ModConfigSpec.IntValue DEFAULT_SCREEN_SOUND_DISTANCE = BUILDER.comment(
+            "Maximum audible distance in blocks from a screen when no connected speaker is closer.")
+            .defineInRange("default_screen_sound_distance", 32, 1, 256);
+    public static final ModConfigSpec.IntValue SPEAKER_SOUND_DISTANCE = BUILDER.comment(
+            "Maximum audible distance in blocks from each directly/cable-connected speaker.")
+            .defineInRange("speaker_sound_distance", 96, 1, 512);
     public static final ModConfigSpec.IntValue PIXELS_PER_TILE = BUILDER.comment(
             "Logical pixels contributed by one screen block along each axis.")
             .defineInRange("pixels_per_tile", 720, 64, 2160);
@@ -65,12 +73,24 @@ public final class MineScreenConfig {
     public static final ModConfigSpec.IntValue VIDEO_FAR_FPS = BUILDER.comment(
             "Video decode/upload rate beyond half of max_render_distance.")
             .defineInRange("video_far_fps", 10, 5, 10);
+    public static final ModConfigSpec.IntValue MAX_ACTIVE_CONTENT_SESSIONS = BUILDER.comment(
+            "Maximum simultaneously finalized VIDEO/WEB/VNC backends. Additional screens remain in the asynchronous loading state until a slot is released.")
+            .defineInRange("max_active_content_sessions", 8, 1, 32);
+    public static final ModConfigSpec.IntValue MAX_ACTIVE_CANVAS_PIXELS = BUILDER.comment(
+            "Aggregate logical-pixel reservation for finalized content backends. This bounds NativeImage/Chromium/VNC memory bursts; one oversized visible session is still allowed.")
+            .defineInRange("max_active_canvas_pixels", 33_177_600, 1_048_576, 134_217_728);
+    public static final ModConfigSpec.IntValue MAX_WEB_TABS_PER_SESSION = BUILDER.comment(
+            "Maximum Chromium tabs kept by one WEB session. Restored tabs are created one per client tick to avoid a native-memory and render-thread spike.")
+            .defineInRange("max_web_tabs_per_session", 6, 1, 16);
     public static final ModConfigSpec.IntValue VNC_COMPRESSION_LEVEL = BUILDER.comment(
             "TightVNC zlib compression level requested from the RFB server. 9 saves the most bandwidth but uses more server CPU.")
             .defineInRange("vnc_compression_level", 9, 0, 9);
     public static final ModConfigSpec.IntValue VNC_JPEG_QUALITY = BUILDER.comment(
             "TightVNC JPEG quality level from 0 to 9. Lower values are more aggressive; 5 is a balanced bandwidth-first default.")
             .defineInRange("vnc_jpeg_quality", 5, 0, 9);
+    public static final ModConfigSpec.IntValue VNC_MAX_FPS = BUILDER.comment(
+            "Default maximum VNC framebuffer request rate. Individual screens may override this value.")
+            .defineInRange("vnc_max_fps", 20, 1, 60);
     public static final ModConfigSpec.BooleanValue WEB_PEER_DISTRIBUTION = BUILDER.comment(
             "Enable direct peer-assisted WEB framebuffer distribution. Risk: nearby players learn each other's network addresses and page pixels travel without transport encryption. Enable on both server and clients; frames never traverse the Minecraft server.")
             .define("web_peer_distribution", false);
@@ -104,6 +124,27 @@ public final class MineScreenConfig {
     public static final ModConfigSpec.BooleanValue SHOW_IDLE_INDICATOR = BUILDER.comment(
             "Whether an optional controller overlay may show a faint idle mark when nobody controls it.")
             .define("show_idle_indicator", false);
+    public static final ModConfigSpec.EnumValue<WebLoadingStyle> WEB_LOADING_STYLE = BUILDER.comment(
+            "WEB loading animation style: ORBIT, PULSE, or MINIMAL.")
+            .defineEnum("web_loading_style", WebLoadingStyle.ORBIT);
+    public static final ModConfigSpec.ConfigValue<String> WEB_LOADING_ACCENT_COLOR = BUILDER.comment(
+            "WEB loading animation accent as an ARGB hex string.")
+            .define("web_loading_accent_color", "FFFFD43B", MineScreenConfig::validArgb);
+    public static final ModConfigSpec.ConfigValue<String> WEB_LOADING_BACKGROUND_COLOR = BUILDER.comment(
+            "WEB loading page base color as an ARGB hex string.")
+            .define("web_loading_background_color", "FF101722", MineScreenConfig::validArgb);
+    public static final ModConfigSpec.IntValue WEB_LOADING_SPEED_PERCENT = BUILDER.comment(
+            "WEB loading animation speed percentage. 100 is the default speed.")
+            .defineInRange("web_loading_speed_percent", 100, 25, 300);
+    public static final ModConfigSpec.BooleanValue WEB_LOADING_SHOW_THUMBNAIL = BUILDER.comment(
+            "Show the last local page thumbnail behind the WEB loading animation.")
+            .define("web_loading_show_thumbnail", true);
+    public static final ModConfigSpec.BooleanValue WEB_LOADING_SHOW_MASCOT = BUILDER.comment(
+            "Show the small pixel assistant on WEB loading and error pages.")
+            .define("web_loading_show_mascot", true);
+    public static final ModConfigSpec.BooleanValue UI_SHOW_MASCOT = BUILDER.comment(
+            "Show the small pixel assistant in MineScreen configuration panels.")
+            .define("ui_show_mascot", true);
 
     public static final ModConfigSpec SPEC = BUILDER.build();
 
@@ -113,6 +154,23 @@ public final class MineScreenConfig {
 
     public static int defaultHeightBlocks() {
         return DEFAULT_HEIGHT.get();
+    }
+
+    private static boolean validArgb(Object value) {
+        return value instanceof String text
+                && text.replace("#", "").matches("(?i)[0-9a-f]{6}([0-9a-f]{2})?");
+    }
+
+    public enum WebLoadingStyle implements TranslatableEnum {
+        ORBIT,
+        PULSE,
+        MINIMAL;
+
+        @Override
+        public Component getTranslatedName() {
+            return Component.translatable("minescreen.configuration.web_loading_style."
+                    + name().toLowerCase(java.util.Locale.ROOT));
+        }
     }
 
     private MineScreenConfig() {

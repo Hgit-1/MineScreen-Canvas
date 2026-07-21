@@ -1,12 +1,15 @@
 # MineScreen Future Roadmap
 
+WebDisplays behavior parity is tracked in `PORTING.md`. This file covers optional features
+beyond the original mod rather than replacing the port matrix.
+
 本文档记录尚未进入当前稳定功能集的长期方向。条目代表设计预期，不承诺具体版本或发布日期。
 
 ## 新设备与便携终端
 
 ### 手机
 
-- 可手持的 MineScreen 手机，提供小尺寸触控屏、网页、媒体遥控和屏幕投送入口。
+- 可手持的MineScreen手机，提供小尺寸触控屏、网页、媒体遥控和屏幕投送入口。
 - 手机可作为主机/屏幕的便携遥控器，也可在获得权限后预览指定 `screen_id`。
 - 为多人环境设计独立的本地凭据仓库；不会把Cookie、密码、VNC凭据或本地媒体路径同步到服务器。
 - 研究物品模型上的实时低分辨率渲染，并提供帧率、距离和电量/发热风格的性能限制。

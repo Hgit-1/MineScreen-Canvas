@@ -41,6 +41,8 @@ public final class ClientNetworkState {
         ScreenStatePayload previous = STATES.put(payload.screenId(), payload);
         if (previous != null && isWebNavigationOnly(previous, payload)) {
             ScreenContentManager.applyRemoteWebNavigation(payload.screenId(), payload.sourceReference());
+        } else if (previous == null && sameLocalContent(payload)) {
+            ScreenContentManager.applyRemotePlaybackState(payload);
         } else if (previous == null || !sameContent(previous, payload)) {
             ScreenContentManager.onRemoteStateChanged(payload.screenId());
         } else {
@@ -149,8 +151,20 @@ public final class ClientNetworkState {
                 && first.columns() == second.columns() && first.rows() == second.rows()
                 && first.contentType().equals(second.contentType())
                 && first.sourceReference().equals(second.sourceReference())
-                && first.loop() == second.loop()
-                && Float.compare(first.volume(), second.volume()) == 0;
+                && first.loop() == second.loop();
+    }
+
+    private static boolean sameLocalContent(ScreenStatePayload remote) {
+        ClientScreenProfile local = ScreenContentManager.profile(remote.screenId());
+        if (local.contentType == null || !local.contentType.name().equals(remote.contentType())) {
+            return false;
+        }
+        String reference = switch (local.contentType) {
+            case WEB, VNC -> local.source == null ? "" : local.source;
+            case VIDEO -> local.mediaId == null ? "" : local.mediaId;
+            case IDLE -> "";
+        };
+        return reference.equals(remote.sourceReference()) && local.loop == remote.loop();
     }
 
     private static boolean isWebNavigationOnly(ScreenStatePayload first, ScreenStatePayload second) {
@@ -158,8 +172,7 @@ public final class ClientNetworkState {
                 && first.columns() == second.columns() && first.rows() == second.rows()
                 && first.contentType().equals("WEB") && second.contentType().equals("WEB")
                 && !first.sourceReference().equals(second.sourceReference())
-                && first.loop() == second.loop()
-                && Float.compare(first.volume(), second.volume()) == 0;
+                && first.loop() == second.loop();
     }
 
     @SubscribeEvent

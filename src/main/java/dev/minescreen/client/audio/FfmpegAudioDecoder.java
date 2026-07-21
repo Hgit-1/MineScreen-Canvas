@@ -8,6 +8,7 @@ import org.bytedeco.ffmpeg.avcodec.AVCodecContext;
 import org.bytedeco.ffmpeg.avcodec.AVPacket;
 import org.bytedeco.ffmpeg.avformat.AVFormatContext;
 import org.bytedeco.ffmpeg.avformat.AVInputFormat;
+import org.bytedeco.ffmpeg.avformat.AVIOInterruptCB;
 import org.bytedeco.ffmpeg.avformat.AVStream;
 import org.bytedeco.ffmpeg.avutil.AVChannelLayout;
 import org.bytedeco.ffmpeg.avutil.AVDictionary;
@@ -19,6 +20,8 @@ import org.bytedeco.javacpp.PointerPointer;
 import org.lwjgl.system.MemoryUtil;
 
 import dev.minescreen.client.video.VideoSource;
+import dev.minescreen.client.video.FfmpegErrors;
+import dev.minescreen.client.video.FfmpegInputOptions;
 
 import static org.bytedeco.ffmpeg.global.avcodec.*;
 import static org.bytedeco.ffmpeg.global.avformat.*;
@@ -89,12 +92,29 @@ public final class FfmpegAudioDecoder implements AutoCloseable {
         SwrContext resampler = new SwrContext((Pointer) null);
         BytePointer converted = null;
         PointerPointer<BytePointer> outputPlanes = new PointerPointer<>(1);
+        AVDictionary inputOptions = null;
+        AVIOInterruptCB.Callback_Pointer interruptCallback =
+                new AVIOInterruptCB.Callback_Pointer((Pointer) null) {
+                    @Override
+                    public int call(Pointer ignored) {
+                        return !running || Thread.currentThread().isInterrupted() ? 1 : 0;
+                    }
+                };
         int streamIndex = -1;
         double timeBase = 0.0D;
         try {
-            if (avformat_open_input(format, source.path().toString(), (AVInputFormat) null,
-                    (AVDictionary) null) < 0 || avformat_find_stream_info(format, (PointerPointer<?>) null) < 0) {
-                throw new IllegalStateException("Unable to open audio source");
+            format.interrupt_callback().callback(interruptCallback).opaque(null);
+            inputOptions = FfmpegInputOptions.create(source);
+            int result = avformat_open_input(format, source.ffmpegInput(), (AVInputFormat) null,
+                    inputOptions);
+            FfmpegInputOptions.free(inputOptions);
+            inputOptions = null;
+            if (result < 0) {
+                throw FfmpegErrors.failure("Unable to open audio source", result);
+            }
+            result = avformat_find_stream_info(format, (PointerPointer<?>) null);
+            if (result < 0) {
+                throw FfmpegErrors.failure("Unable to read audio stream information", result);
             }
             AVStream stream = null;
             for (int i = 0; i < format.nb_streams(); i++) {
@@ -115,16 +135,28 @@ public final class FfmpegAudioDecoder implements AutoCloseable {
                 throw new IllegalStateException("No decoder for audio stream");
             }
             codecContext = avcodec_alloc_context3(codec);
-            avcodec_parameters_to_context(codecContext, stream.codecpar());
-            if (avcodec_open2(codecContext, codec, (AVDictionary) null) < 0) {
-                throw new IllegalStateException("Unable to open audio decoder");
+            if (codecContext == null) {
+                throw new IllegalStateException("Unable to allocate the FFmpeg audio decoder");
+            }
+            result = avcodec_parameters_to_context(codecContext, stream.codecpar());
+            if (result < 0) {
+                throw FfmpegErrors.failure("Unable to configure the audio decoder", result);
+            }
+            result = avcodec_open2(codecContext, codec, (AVDictionary) null);
+            if (result < 0) {
+                throw FfmpegErrors.failure("Unable to open the audio decoder", result);
             }
             timeBase = av_q2d(stream.time_base());
             av_channel_layout_default(outputLayout, 2);
-            if (swr_alloc_set_opts2(resampler, outputLayout, AV_SAMPLE_FMT_S16, SAMPLE_RATE,
+            result = swr_alloc_set_opts2(resampler, outputLayout, AV_SAMPLE_FMT_S16, SAMPLE_RATE,
                     codecContext.ch_layout(), codecContext.sample_fmt(), codecContext.sample_rate(),
-                    0, null) < 0 || swr_init(resampler) < 0) {
-                throw new IllegalStateException("Unable to initialize audio resampler");
+                    0, null);
+            if (result < 0) {
+                throw FfmpegErrors.failure("Unable to configure the audio resampler", result);
+            }
+            result = swr_init(resampler);
+            if (result < 0) {
+                throw FfmpegErrors.failure("Unable to initialize the audio resampler", result);
             }
 
             while (running) {
@@ -192,6 +224,7 @@ public final class FfmpegAudioDecoder implements AutoCloseable {
             errorMessage = exception.getMessage() == null ? exception.getClass().getSimpleName()
                     : exception.getMessage();
         } finally {
+            FfmpegInputOptions.free(inputOptions);
             if (converted != null) {
                 converted.close();
             }
@@ -205,6 +238,7 @@ public final class FfmpegAudioDecoder implements AutoCloseable {
                 avcodec_free_context(codecContext);
             }
             avformat_close_input(format);
+            interruptCallback.close();
         }
     }
 
