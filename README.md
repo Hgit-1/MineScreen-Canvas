@@ -1,5 +1,7 @@
 # MineScreen Canvas
 
+[简体中文](README_ZH_CN.md)
+
 MineScreen Canvas is a client-first display mod for Minecraft Java 1.21.1 and NeoForge. It lets
 you build screens in the world and use them for web pages, local video, VNC desktops, or a clear
 IDLE test pattern. Adjacent screens can form one canvas, while cable-linked screens can be arranged
@@ -132,7 +134,6 @@ Missing artwork is ignored without a missing-texture placeholder.
 
 ## Documentation
 
-- [中文用户说明](README_ZH_CN.md)
 - [Future roadmap](FUTURE.md)
 - [Developer and compatibility notes](PORTING.md)
 
