@@ -8,9 +8,9 @@ displayName="${mod_name}"
 authors="${mod_authors}"
 description='''${mod_description}
 
-MineScreen uses Montoyo's public-domain WebDisplays 1.12.2 behavior as its feature reference while retaining the MineScreen name, mod id, resource namespace, saved configuration identity, and extension modes. Its primary compatibility target includes joined web screens, screen configuration, keyboards, linkers, laser input, MinePad-like devices, upgrades, controllers, ownership, and multiplayer synchronization.
+MineScreen is an independent implementation. WebDisplays is acknowledged separately for its historical contribution to in-world web displays; it is not a compatibility target or replacement identity.
 
-VIDEO, VNC, audio, and peer distribution remain MineScreen extension features. Multiplayer servers persist authoritative screen/peripheral state but never relay decoded media frames.'''
+Multiplayer servers persist authoritative screen/peripheral state but never relay decoded media frames.'''
 
 [[mixins]]
 config="minescreen.mixins.json"

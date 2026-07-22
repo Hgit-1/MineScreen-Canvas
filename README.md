@@ -1,162 +1,148 @@
 # MineScreen Canvas
 
-[English](README.md) | [简体中文](README_ZH_CN.md)
+MineScreen Canvas is a client-first display mod for Minecraft Java 1.21.1 and NeoForge. It lets
+you build screens in the world and use them for web pages, local video, VNC desktops, or a clear
+IDLE test pattern. Adjacent screens can form one canvas, while cable-linked screens can be arranged
+as independent panes or as one panoramic display.
 
-**MineScreen Canvas** is the project name for MineScreen's Minecraft 1.21.1 NeoForge implementation. The mod id and registry namespace remain `minescreen`, and the in-game mod name remains **MineScreen** for save compatibility.
+> [!NOTE]
+> This project was written with assistance from AI coding tools. All code, dependencies, media
+> behavior, and security settings still require human review. Please report reproducible issues
+> with your Minecraft version, NeoForge version, mode, and client log.
 
-MineScreen places joined displays in the world and renders WEB pages, VIDEO sources, VNC framebuffers, and an IDLE test pattern. Screens can form irregular canvases, independent regions, or cable-linked multi-surface layouts. Content is rendered by each client; the optional server component synchronizes metadata, permissions, and playback state rather than forwarding video or VNC frames.
+> [!WARNING]
+> WEB, VIDEO, and VNC sources are normally opened by each player's client. The Minecraft server
+> does not relay decoded video/VNC frames. Only configured multiplayer state may be synchronized;
+> local file paths, passwords, cookies, and browser pixels stay on the client.
 
-## WebDisplays relationship
+## Install
 
-Yes. MineScreen Canvas uses Montoyo's WebDisplays 1.12.2 project as a behavioral, interaction, peripheral, and data-model reference. The audited upstream revision and public-domain notice are documented in [UPSTREAM.md](UPSTREAM.md).
+1. Install Minecraft Java 1.21.1 with NeoForge 21.1.219.
+2. Put `minescreen-0.3.0.jar` in the client `mods` folder.
+3. For WEB mode, also install the official MCEF NeoForge mod `2.1.6-1.21.1`.
+4. Start the game once, then configure MineScreen from `Mods -> MineScreen -> Config`.
 
-This repository is an independent Java 21 / Mojmap / NeoForge 21.1.219 reimplementation. It is not an official Montoyo release, does not reuse legacy Forge/MCP APIs, and does not bundle the old Chromium integration. Local video, VNC, positional audio, irregular canvases, content regions, and optional WEB peer distribution are MineScreen extensions. See [PORTING.md](PORTING.md) for compatibility progress.
+MCEF is only needed on clients that use WEB mode. A dedicated server does not need MCEF. FFmpeg
+is included for the supported local-video path; Windows x64 is the primary validation platform.
 
-## Requirements
+## First screen
 
-- Minecraft Java Edition 1.21.1
-- NeoForge 21.1.219
-- Java 21
-- Official MCEF NeoForge 2.1.6-1.21.1 on clients
-- MineScreen on clients, and also on the server for multiplayer synchronization
+1. Place a Screen block and connect its cable network to a powered redstone source or lever.
+2. Place adjacent Screen blocks with the same facing to form a canvas automatically. Missing tiles
+   remain empty instead of producing fake black geometry.
+3. Look at a powered screen, then hold Shift and right-click, or use the Screen Configurator item.
+4. Choose IDLE, VIDEO, WEB, or VNC and press Save/Apply.
+5. A connected Computer opens the larger control panel. Its preview remains visible when the GUI
+   is closed.
 
-Dedicated servers do not install MCEF and do not initialize Chromium, FFmpeg, OpenAL, or client render classes.
+The screen is black while unpowered and cannot be configured from the screen itself until power is
+restored. The Computer panel can still be opened and will explain the power state.
 
-## Quick start
-
-1. Install MineScreen and MCEF on the client.
-2. Place `minescreen:screen` blocks. Coplanar tiles with the same facing join automatically.
-3. Attach at least one `minescreen:screen_cable`, then power any cable in the connected network with a lever, powered redstone wire, button, or another redstone source.
-4. Use `minescreen:screen_configurator` on a powered screen, or use the legacy Shift + right-click gesture.
-5. Choose IDLE, VIDEO, WEB, or VNC and save the profile.
-6. Aim at WEB/VNC content to click or scroll. Keyboard input requires the handheld keyboard, a linked fixed keyboard, or the computer's built-in preview keyboard.
-
-An unpowered screen is black, releases its content backend, and refuses to open its screen panel. A linked computer remains fully configurable while unpowered and displays a clear `NO POWER` status.
-
-Use an iron-or-better pickaxe in the main hand to remove a screen. While a valid pickaxe is held, the attack button is reserved for block breaking and is not sent to WEB/VNC.
-
-## Content modes
+## Modes
 
 ### IDLE
 
-Displays a color test image and a centered IDLE mark without opening an external connection. Old `TEST` profiles migrate to IDLE.
+IDLE is the safe starting mode. It draws color bars, orientation lines, a centered `IDLE` label,
+and—when supplied—your transparent artwork in the lower gray test area. It opens no network
+connection and is useful for checking facing, rotation, joins, and empty spaces.
 
 ### VIDEO
 
-- Local MP4 files and direct HTTP(S) media URLs, including signed URLs up to 65,535 characters.
-- FFmpeg 7.1 JavaCPP decode, a three-slot bounded frame ring, reused DynamicTexture uploads, up to 30 FPS, looping, seeking, and pause.
-- FFmpeg/OpenAL positional audio with distance attenuation and an audio clock used to calibrate video.
-- Local paths never enter server payloads. Multiplayer clients map the same shared media id to their own local file.
+VIDEO plays a local MP4 through FFmpeg. It supports play/pause, seeking, looping, a configurable
+resolution, and a maximum of 30 FPS. The file path is stored locally and is never sent to a server.
 
 ### WEB
 
-- MCEF off-screen Chromium at the configured canvas resolution.
-- Managed tabs, new-window capture, back/forward/reload, current-tab navigation, and single/two/four-pane layouts.
-- Main-frame loading animation and an error page for HTTP, DNS, TLS, and CEF failures.
-- Exit thumbnails are cached locally under `config/minescreen-web-thumbnails/` and displayed while Chromium restores a page.
-- Crosshair-based mouse input. When a page requests Pointer Lock, the virtual cursor is centered and the player view turns toward the real physical point carrying the logical image center before camera rotation is frozen.
-
-Optional peer-assisted WEB distribution uses a deterministic direct-player tree. The Minecraft server exchanges only endpoints and session tokens. JPEG page frames use the direct peer connection and never traverse the game server.
+WEB uses MCEF's off-screen Chromium renderer. It supports HTTPS/HTTP according to configuration,
+navigation, pop-up links as MineScreen tabs, tab switching, scrolling, clicking, keyboard focus,
+and browser Pointer Lock when a page requests relative mouse movement. Press Escape to leave input
+capture.
 
 ### VNC
 
-- RFB 3.3/3.7/3.8 with None and classic VNC authentication.
-- Raw, CopyRect, DesktopSize, LastRect, and mature Tight decoding with persistent zlib streams, palette/gradient filters, JPEG, and PNG.
-- Per-screen VNC request FPS. Limiting FPS reduces framebuffer requests at the VNC server instead of discarding already-received frames.
-- Multiple players may control the same endpoint concurrently by default. Passwords remain in `config/minescreen-vnc-credentials.json`.
+VNC connects from the client to an RFB server. Tight-style rectangle decoding and configurable
+refresh limits are used to reduce bandwidth. Credentials are stored in the local client credential
+store; they are not sent through MineScreen's multiplayer state.
 
-Classic VNC is not encrypted. Use a trusted VPN, SSH tunnel, or TLS tunnel outside MineScreen.
+## Using the controls
 
-## Joined and multi-surface displays
+| Action | Result |
+|---|---|
+| Crosshair on a powered screen | The crosshair is the virtual pointer position. |
+| Left click | Click the screen. Hold a supported pickaxe in the main hand to mine the Screen instead. |
+| Mouse wheel | Scroll the focused WEB/VNC surface. |
+| Shift + right-click | Open the screen editor. |
+| Right-click Computer | Open the host panel. |
+| Right-click Fixed Keyboard | Enter keyboard input mode. |
+| Hold the handheld Keyboard item | Route keyboard input to the screen while focused. |
+| Escape | Release keyboard focus or browser Pointer Lock. |
 
-- NORTH, SOUTH, EAST, WEST, UP, and DOWN screen faces are supported.
-- Irregular and cable-separated layouts draw only real screen tiles. Missing cells do not create black quads or invisible collision-free surfaces.
-- One physical screen group can assign tiles to the main region plus independent regions 1-3.
-- A cable-linked computer can keep each physical surface independent or combine different planes into horizontal, vertical, or custom canvases.
-- Surface order, logical position, rotation, split assignment, and per-region content are client-local profile data.
-- Joined canvas limits default to 3840x2160 and about 8.3 MP. Resolution presets from 25% to 100% trade detail for larger WEB UI and lower resource use.
+When a browser requests Pointer Lock, MineScreen aims at the physical screen that contains the
+logical canvas center. This works across rotations, irregular layouts, gaps, and different screen
+faces; it does not simply aim at the master block.
 
-## Input
+## Joining and multi-surface layouts
 
-- Crosshair over WEB/VNC: move, click, and scroll without creating a separate OS cursor.
-- Handheld keyboard while aiming: exclusive keyboard input; Minecraft and other mod hotkeys are suppressed.
-- Linked fixed keyboard: right-click to enter input mode.
-- Computer preview: built-in mouse and keyboard input.
-- `Esc`: release keyboard mode and WEB Pointer Lock.
-- Pointer Lock starts from the logical image center. On rotated, irregular, or multi-face host canvases, MineScreen resolves which real physical tile displays UV `(0.5, 0.5)` and aims there; an empty canvas gap falls back to the nearest real displayed point.
+- Same-facing adjacent Screen blocks join automatically.
+- A Computer and Screen Cables can connect screens on different faces.
+- Host layouts include free panes, horizontal panorama, vertical panorama, and custom positions.
+- A missing or disabled tile stays empty; it does not render an opaque area in the air.
+- One host network can expose multiple regions, allowing different panes to play different content.
 
-## UI and loading customization
+## Multiplayer behavior
 
-MineScreen media previews, widget frames, text, EditBox content, and carets are composited into one texture by default for ModernUI compatibility. Optional UI adapters can register through `MineScreenUiProvider`.
+MineScreen is designed as a client mod with an optional server installation. In multiplayer, install
+MineScreen on the server when authoritative screen state and permissions are required. Clients still
+open their own WEB/VNC/video sources. Playback timestamps and selected state can be synchronized,
+but frame-perfect visual identity is not guaranteed because network latency, decoding speed, and
+source timing differ between clients.
 
-The native NeoForge config screen uses short English labels to avoid entry overflow. MineScreen's default panels and loading pages use a restrained, minimal visual style without built-in character art.
+## Security and configuration
 
-The following options are available in `config/minescreen-common.toml` and in `Mods -> MineScreen -> Config`:
+Open `config/minescreen-common.toml` or use the NeoForge configuration screen. The policy supports
+domain allowlists and controls for HTTP, localhost, private IPs, cloud metadata, arbitrary domains,
+and `file://`. Single-player defaults are intentionally convenient; review them before opening a
+world to LAN.
 
-- `web_loading_style`: `ORBIT`, `PULSE`, or `MINIMAL`
-- `web_loading_accent_color`: ARGB animation color
-- `web_loading_background_color`: ARGB fallback background
-- `web_loading_speed_percent`: 25-300
-- `web_loading_show_thumbnail`
-- `web_loading_show_custom_decoration`
-- `ui_show_custom_decoration`
-- `ui_custom_decoration_opacity_percent`
-- `ui_provider` and `composite_ui_layer`
+Useful settings include:
 
-Optional transparent artwork can be supplied before packaging in `user_assets/`. `loading_decoration.png` is contain-fitted over the existing thumbnail/default loading background. `panel_decoration.png` is drawn at reduced opacity behind controls inside the same composited GUI layer, so ModernUI cannot separate it from panel text/widgets. The repository does not download third-party art automatically; see `user_assets/README_ZH_CN.txt` for limits.
+- screen resolution and canvas pixel limits;
+- WEB loading animation and page thumbnail behavior;
+- `web_loading_show_custom_decoration`;
+- `ui_show_custom_decoration` and `ui_custom_decoration_opacity_percent`;
+- VNC FPS, WEB peer distribution, audio distance, and render distance.
 
-## Power behavior
+## Custom artwork
 
-MineScreen power travels only through the logical extension-cable network. The cable is not a vanilla redstone conductor. A powered lever can touch any cable face; powered redstone wire and other powered signal blocks are recognized explicitly. Power topology is cached and refreshed outside the renderer.
+Place optional transparent PNG files in [user_assets](user_assets/):
 
-Power loss immediately renders black and closes Chromium, FFmpeg, VNC, audio, and associated textures. Restoring power recreates the selected backend asynchronously from the saved profile.
+- `loading_decoration.png` is contain-fitted over the WEB loading/error background;
+- `panel_decoration.png` is drawn at low opacity behind the Computer/editor UI;
+- the same artwork is cropped to the lower gray area of IDLE so it is visible in world previews.
 
-## Network security
+See [user_assets/README_ZH_CN.txt](user_assets/README_ZH_CN.txt) for size and composition guidance.
+Missing artwork is ignored without a missing-texture placeholder.
 
-An integrated single-player world that is not open to LAN uses `unrestricted_singleplayer=true` by default. HTTP, localhost, private addresses, arbitrary domains, cloud metadata, and local files are then available without a blocking prompt.
+## Known boundaries
 
-LAN and multiplayer restore the protected defaults:
+- WEB requires MCEF on the client.
+- Local video support is currently MP4-focused and has no audio track mixing.
+- VNC bandwidth depends heavily on desktop changes, compression, resolution, and FPS.
+- Client-side sources are not a server-side media relay.
 
-- HTTPS and a domain allow-list by default
-- HTTP, `file://`, localhost, private/link-local addresses, and cloud metadata blocked
-- Resolved IP addresses checked to reduce DNS rebinding bypasses
-- Explicit config switches for each relaxed capability
+## Documentation
 
-## Multiplayer synchronization
+- [中文用户说明](README_ZH_CN.md)
+- [Future roadmap](FUTURE.md)
+- [Developer and compatibility notes](PORTING.md)
 
-The optional server component validates topology, dimensions, distance, ownership/OP permissions, URLs/media ids, playback timestamps, volume, and access mode. It does not proxy VIDEO or VNC frames. Each client connects to and renders its own source.
+## Special thanks
 
-WEB metadata synchronization sends a deduplicated active URL after navigation stabilizes. Optional WEB peer distribution sends compressed page pixels directly between participating clients, not through the Minecraft server.
-
-## Performance model
-
-- Screen grouping, cable power, and host topology are tick-batched and never rebuilt in a BER render call.
-- URL/DNS/file preflight runs on one bounded worker.
-- At most one prepared content backend is finalized per client tick.
-- VIDEO uses bounded decode/audio queues and one reused texture.
-- VNC uploads dirty rectangles only.
-- Hidden Chromium tabs use a 64x64 viewport; restored tabs are created one per tick.
-- Loading animation uploads are capped and reuse one texture.
-- Thumbnail JPEG encoding and disk IO use a bounded background worker; at most 128 cached files are retained.
-
-## Build
-
-Use Java 21 and the included wrapper:
-
-```powershell
-.\gradlew.bat clean build
-```
-
-The release artifact is `build/libs/minescreen-0.3.0.jar`.
-
-Key dependencies:
-
-- `org.bytedeco:ffmpeg-platform:7.1-1.5.11`
-- `com.cinemamod:mcef:2.1.6-1.21.1` for compilation
-- `com.cinemamod:mcef-neoforge:2.1.6-1.21.1` for development runtime
-
-MCEF manages its own CEF/JCEF native components. MineScreen does not bundle the CEF native runtime.
+Special thanks to Montoyo and the WebDisplays project for helping establish the idea of in-world
+web displays and for useful historical context. MineScreen Canvas is an independent 1.21.1
+NeoForge project, not a WebDisplays port or drop-in replacement, and its video, VNC, audio, cable,
+canvas, and peer features have their own implementation and behavior.
 
 ## License
 
-New MineScreen code is MIT licensed. WebDisplays provenance and its public-domain notice are documented in [UPSTREAM.md](UPSTREAM.md).
+MineScreen code is distributed under the MIT License. See [LICENSE](LICENSE).

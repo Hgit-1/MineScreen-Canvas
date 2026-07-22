@@ -1,7 +1,7 @@
 # MineScreen Future Roadmap
 
-WebDisplays behavior parity is tracked in `PORTING.md`. This file covers optional features
-beyond the original mod rather than replacing the port matrix.
+`PORTING.md` contains historical compatibility notes for developers. This file covers MineScreen's
+own future features and does not promise WebDisplays behavior parity.
 
 本文档记录尚未进入当前稳定功能集的长期方向。条目代表设计预期，不承诺具体版本或发布日期。
 

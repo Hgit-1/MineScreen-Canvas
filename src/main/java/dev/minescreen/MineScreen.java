@@ -21,10 +21,7 @@ import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
-/**
- * Common entry point for MineScreen. WebDisplays is the behavioral/feature reference for the
- * ongoing 1.21.1 port effort, while MineScreen keeps its own name and registry namespace.
- */
+/** Common entry point for the independent MineScreen Canvas implementation. */
 @Mod(MineScreen.MOD_ID)
 public final class MineScreen {
     public static final String MOD_ID = "minescreen";

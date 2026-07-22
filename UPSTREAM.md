@@ -1,7 +1,8 @@
-# Upstream provenance
+# Historical acknowledgement
 
-This project is an independent Minecraft 1.21.1 / NeoForge reimplementation inspired by
-**WebDisplays**, with behavioral compatibility as an explicit goal.
+MineScreen Canvas is an independent Minecraft 1.21.1 / NeoForge project. WebDisplays is listed
+here as a historical inspiration and special acknowledgement, not as MineScreen's compatibility
+target or project identity.
 
 - Upstream project: <https://github.com/montoyo/webdisplays>
 - Upstream author: BARBOTIN Nicolas (Montoyo)
@@ -10,10 +11,8 @@ This project is an independent Minecraft 1.21.1 / NeoForge reimplementation insp
 - Upstream license statement: the mod and its source code were placed in the public domain;
   forks and redistribution are explicitly permitted, with attribution appreciated.
 
-The original 1.12.2 code is used as a behavioral and data-model reference. Forge 1.12 APIs,
-MCP names, `SimpleNetworkWrapper`, legacy TESR/OpenGL, metadata blocks, capabilities and bundled
-MCEF code are not copied blindly. Their behavior is reimplemented against Java 21, Mojmap and
-NeoForge 21.1.219.
+MineScreen does not claim drop-in behavioral parity with WebDisplays. Its code is implemented
+against Java 21, Mojmap and NeoForge 21.1.219, and its current video, VNC, audio, cable, canvas,
+and peer features have their own design.
 
-New port code is distributed under the repository's MIT license. Existing MineScreen-derived
-video, VNC, audio and P2P code is retained as an optional extension to the WebDisplays feature set.
+MineScreen code is distributed under the repository's MIT license.

@@ -11,6 +11,7 @@ import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 
 import dev.minescreen.MineScreen;
 import dev.minescreen.client.content.ScreenRenderSource;
+import dev.minescreen.client.ui.CustomUiArtwork;
 
 /** Owns the persistent IDLE color-test texture; renderers never allocate it per tick. */
 public final class ScreenTextureManager {
@@ -72,6 +73,7 @@ public final class ScreenTextureManager {
         }
         fill(image, WIDTH / 2 - 82, HEIGHT / 2 - 30, 164, 60, rgba(10, 13, 20));
         drawWord(image, "IDLE", WIDTH / 2, HEIGHT / 2, 9, rgba(255, 221, 59));
+        CustomUiArtwork.drawIdleDecoration(image);
 
         textureManager.register(IDLE_TEXTURE, new DynamicTexture(image));
         NativeImage black = new NativeImage(NativeImage.Format.RGBA, 1, 1, false);
