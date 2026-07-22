@@ -9,7 +9,7 @@ import dev.minescreen.MineScreen;
 import dev.minescreen.MineScreenConfig;
 import dev.minescreen.client.ScreenRenderType;
 import dev.minescreen.client.content.ScreenRenderSource;
-import dev.minescreen.client.ui.MineScreenAssistant;
+import dev.minescreen.client.ui.CustomUiArtwork;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.ResourceLocation;
@@ -34,6 +34,7 @@ final class BrowserStatusTexture implements AutoCloseable {
     private int lastSpinnerFrame = -1;
     private boolean dirty = true;
     private boolean closed;
+    private int[] customDecoration;
 
     BrowserStatusTexture(UUID screenId, int sourceWidth, int sourceHeight) {
         this.screenId = screenId;
@@ -106,6 +107,7 @@ final class BrowserStatusTexture implements AutoCloseable {
         image = new NativeImage(NativeImage.Format.RGBA, width, height, false);
         texture = new DynamicTexture(image);
         Minecraft.getInstance().getTextureManager().register(location, texture);
+        customDecoration = null;
         dirty = true;
         lastSpinnerFrame = -1;
     }
@@ -154,13 +156,6 @@ final class BrowserStatusTexture implements AutoCloseable {
         } else {
             drawLoading(lastSpinnerFrame < 0 ? 0 : lastSpinnerFrame);
         }
-        if (MineScreenConfig.WEB_LOADING_SHOW_MASCOT.get()) {
-            int scale = Math.min(width, height) >= 240 ? 2 : 1;
-            MineScreenAssistant.drawNative(image,
-                    width - MineScreenAssistant.pixelWidth(scale) - 10,
-                    height - MineScreenAssistant.pixelHeight(scale) - 8,
-                    scale, phase == Phase.ERROR ? 210 : 235);
-        }
         texture.upload();
         dirty = false;
     }
@@ -182,16 +177,19 @@ final class BrowserStatusTexture implements AutoCloseable {
             for (int y = 0; y < height; y += Math.max(24, height / 10)) {
                 fillRect(0, y, width, 1, grid);
             }
-            return;
-        }
-        int[] pixels = thumbnail.pixels();
-        for (int y = 0; y < height; y++) {
-            int sourceY = Math.min(thumbnail.height() - 1, y * thumbnail.height() / height);
-            for (int x = 0; x < width; x++) {
-                int sourceX = Math.min(thumbnail.width() - 1, x * thumbnail.width() / width);
-                image.setPixelRGBA(x, y, darken(pixels[sourceY * thumbnail.width() + sourceX],
-                        phase == Phase.LOADING ? 0.48F : 0.22F));
+        } else {
+            int[] pixels = thumbnail.pixels();
+            for (int y = 0; y < height; y++) {
+                int sourceY = Math.min(thumbnail.height() - 1, y * thumbnail.height() / height);
+                for (int x = 0; x < width; x++) {
+                    int sourceX = Math.min(thumbnail.width() - 1, x * thumbnail.width() / width);
+                    image.setPixelRGBA(x, y, darken(pixels[sourceY * thumbnail.width() + sourceX],
+                            phase == Phase.LOADING ? 0.48F : 0.22F));
+                }
             }
+        }
+        if (MineScreenConfig.WEB_LOADING_SHOW_CUSTOM_DECORATION.get()) {
+            drawCustomDecoration();
         }
     }
 
@@ -277,6 +275,86 @@ final class BrowserStatusTexture implements AutoCloseable {
         }
         drawCentered(details, width / 2, top + panelHeight - 20, Math.max(1, scale - 1),
                 rgba(235, 225, 228, 255));
+    }
+
+    /** Scales transparent artwork with a contain fit and composites it over the base background. */
+    private void drawCustomDecoration() {
+        NativeImage artwork = CustomUiArtwork.loading();
+        if (artwork == null) {
+            return;
+        }
+        if (customDecoration == null || customDecoration.length != width * height) {
+            customDecoration = scaleContained(artwork);
+        }
+        for (int y = 0; y < height; y++) {
+            int offset = y * width;
+            for (int x = 0; x < width; x++) {
+                int foreground = customDecoration[offset + x];
+                if ((foreground >>> 24) != 0) {
+                    image.setPixelRGBA(x, y, blend(foreground, image.getPixelRGBA(x, y)));
+                }
+            }
+        }
+    }
+
+    private int[] scaleContained(NativeImage sourceImage) {
+        int[] result = new int[width * height];
+        double scale = Math.min(width / (double) sourceImage.getWidth(),
+                height / (double) sourceImage.getHeight());
+        int drawWidth = Math.max(1, (int) Math.round(sourceImage.getWidth() * scale));
+        int drawHeight = Math.max(1, (int) Math.round(sourceImage.getHeight() * scale));
+        int left = (width - drawWidth) / 2;
+        int top = (height - drawHeight) / 2;
+        for (int y = 0; y < drawHeight; y++) {
+            double sourceY = (y + 0.5D) * sourceImage.getHeight() / drawHeight - 0.5D;
+            for (int x = 0; x < drawWidth; x++) {
+                double sourceX = (x + 0.5D) * sourceImage.getWidth() / drawWidth - 0.5D;
+                result[(top + y) * width + left + x] = bilinear(sourceImage, sourceX, sourceY);
+            }
+        }
+        return result;
+    }
+
+    private static int bilinear(NativeImage sourceImage, double x, double y) {
+        int x0 = Math.max(0, Math.min(sourceImage.getWidth() - 1, (int) Math.floor(x)));
+        int y0 = Math.max(0, Math.min(sourceImage.getHeight() - 1, (int) Math.floor(y)));
+        int x1 = Math.min(sourceImage.getWidth() - 1, x0 + 1);
+        int y1 = Math.min(sourceImage.getHeight() - 1, y0 + 1);
+        double tx = Math.max(0.0D, Math.min(1.0D, x - Math.floor(x)));
+        double ty = Math.max(0.0D, Math.min(1.0D, y - Math.floor(y)));
+        int top = mix(sourceImage.getPixelRGBA(x0, y0),
+                sourceImage.getPixelRGBA(x1, y0), tx);
+        int bottom = mix(sourceImage.getPixelRGBA(x0, y1),
+                sourceImage.getPixelRGBA(x1, y1), tx);
+        return mix(top, bottom, ty);
+    }
+
+    private static int mix(int first, int second, double amount) {
+        int alpha = lerp(first >>> 24, second >>> 24, amount);
+        int blue = lerp(first >>> 16 & 0xFF, second >>> 16 & 0xFF, amount);
+        int green = lerp(first >>> 8 & 0xFF, second >>> 8 & 0xFF, amount);
+        int red = lerp(first & 0xFF, second & 0xFF, amount);
+        return alpha << 24 | blue << 16 | green << 8 | red;
+    }
+
+    private static int lerp(int first, int second, double amount) {
+        return Math.max(0, Math.min(255,
+                (int) Math.round(first + (second - first) * amount)));
+    }
+
+    private static int blend(int foreground, int background) {
+        int alpha = foreground >>> 24;
+        if (alpha >= 255) {
+            return foreground;
+        }
+        if (alpha <= 0) {
+            return background;
+        }
+        double amount = alpha / 255.0D;
+        int red = lerp(background & 0xFF, foreground & 0xFF, amount);
+        int green = lerp(background >>> 8 & 0xFF, foreground >>> 8 & 0xFF, amount);
+        int blue = lerp(background >>> 16 & 0xFF, foreground >>> 16 & 0xFF, amount);
+        return rgba(red, green, blue, 255);
     }
 
     private void drawCentered(String text, int centerX, int centerY, int scale, int color) {

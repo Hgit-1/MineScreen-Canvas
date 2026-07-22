@@ -8,12 +8,16 @@ import dev.minescreen.ScreenGroup;
 import dev.minescreen.ScreenGeometry;
 import dev.minescreen.client.content.ClientScreenProfile;
 import dev.minescreen.client.content.ScreenContentType;
+import dev.minescreen.client.content.ScreenRegionLayout;
+import dev.minescreen.client.content.ScreenRotation;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -390,23 +394,28 @@ public final class ClientInput {
         return true;
     }
 
-    /** Aligns Pointer Lock with the physical panel instead of preserving an arbitrary pitch. */
+    /**
+     * Aligns Pointer Lock with the physical point that displays the logical image centre.
+     *
+     * <p>A host canvas can contain rotated surfaces, differently sized planes and empty gaps. The
+     * centre therefore cannot be approximated by the master tile. We project every live physical
+     * tile into content-canvas UV space, select the tile containing (0.5, 0.5), then invert that
+     * surface's rotation. If the logical centre is a gap, the nearest real displayed point wins.
+     */
     public static void centerViewForPointerLock() {
         Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.player == null || active == null) {
+        if (minecraft.player == null || minecraft.level == null || active == null) {
             return;
         }
         ScreenGroup group = ScreenGroupManager.group(active.groupId());
         if (group == null) {
             return;
         }
-        // Aim at the center of a real tile, not the rectangular group AABB: an irregular canvas
-        // can have an empty center, which would immediately drop the crosshair target and release
-        // keyboard/Pointer Lock again.
-        net.minecraft.world.phys.Vec3 target = ScreenGeometry.origin(group.master(), group.facing())
-                .add(ScreenGeometry.right(group.facing()).scale(0.5D))
-                .add(ScreenGeometry.up(group.facing()).scale(0.5D));
-        net.minecraft.world.phys.Vec3 view = target.subtract(minecraft.player.getEyePosition());
+        Vec3 target = logicalCentreTarget(minecraft.level, group, active.regionId());
+        if (target == null) {
+            return;
+        }
+        Vec3 view = target.subtract(minecraft.player.getEyePosition());
         if (view.lengthSqr() < 1.0E-6D) {
             view = ScreenGeometry.normal(group.facing()).scale(-1.0D);
         } else {
@@ -420,6 +429,175 @@ public final class ClientInput {
         minecraft.player.setXRot(pitch);
         minecraft.player.yRotO = yaw;
         minecraft.player.xRotO = pitch;
+    }
+
+    private static Vec3 logicalCentreTarget(ClientLevel level, ScreenGroup activeGroup,
+            int regionId) {
+        AimCandidate best = null;
+        ScreenHostNetworkManager.HostNetwork network =
+                ScreenHostNetworkManager.networkFor(activeGroup);
+        if (network != null && network.panoramic()) {
+            // The simulated image spans all cable-connected physical surfaces. Search the entire
+            // host canvas so its centre may legitimately resolve to a different face/group.
+            for (ScreenGroup group : network.groups()) {
+                ScreenHostNetworkManager.Surface surface = network.surface(group.groupId());
+                if (surface == null) {
+                    continue;
+                }
+                best = nearestDisplayedPoint(level, surface,
+                        ScreenContentManager.profile(group.groupId()), best);
+            }
+            return best == null ? null : best.worldPoint();
+        }
+
+        ClientScreenProfile profile = ScreenContentManager.profile(activeGroup.groupId());
+        ScreenGroup displayedGroup = activeGroup;
+        if (!activeGroup.legacyAnchor()) {
+            ScreenRegionLayout.Canvas canvas = ScreenRegionLayout.canvas(activeGroup, profile,
+                    regionId);
+            if (canvas == null) {
+                return null;
+            }
+            displayedGroup = canvas.group();
+        }
+        int rotation = ScreenHostNetworkManager.rotationFor(activeGroup);
+        ScreenHostNetworkManager.Surface unitSurface = new ScreenHostNetworkManager.Surface(
+                displayedGroup, 0.0F, 0.0F, 1.0F, 1.0F, 0, 0, rotation,
+                ScreenRotation.logicalWidth(displayedGroup.columns(), displayedGroup.rows(),
+                        rotation),
+                ScreenRotation.logicalHeight(displayedGroup.columns(), displayedGroup.rows(),
+                        rotation));
+        best = nearestDisplayedPoint(level, unitSurface, profile, null);
+        return best == null ? null : best.worldPoint();
+    }
+
+    private static AimCandidate nearestDisplayedPoint(ClientLevel level,
+            ScreenHostNetworkManager.Surface surface, ClientScreenProfile profile,
+            AimCandidate currentBest) {
+        ScreenGroup group = surface.group();
+        if (group.legacyAnchor()) {
+            if (!ScreenTileIndex.isLive(level, group.master(), group.facing())) {
+                return currentBest;
+            }
+            return chooseCandidate(surface, -1, -1, null, currentBest);
+        }
+
+        net.minecraft.core.Direction right = ScreenGeometry.rightDirection(group.facing());
+        net.minecraft.core.Direction up = ScreenGeometry.upDirection(group.facing());
+        int originRight = ScreenGeometry.coordinate(group.origin(), right);
+        int originUp = ScreenGeometry.coordinate(group.origin(), up);
+        for (BlockPos tile : group.tiles()) {
+            if (!ScreenTileIndex.isLive(level, tile, group.facing())
+                    || profile.disabledTiles.contains(tile.asLong())) {
+                continue;
+            }
+            int column = ScreenGeometry.coordinate(tile, right) - originRight;
+            int row = ScreenGeometry.coordinate(tile, up) - originUp;
+            currentBest = chooseCandidate(surface, column, row, tile, currentBest);
+        }
+        return currentBest;
+    }
+
+    private static AimCandidate chooseCandidate(ScreenHostNetworkManager.Surface surface,
+            int column, int row, BlockPos tile, AimCandidate currentBest) {
+        ScreenGroup group = surface.group();
+        double physicalLeft;
+        double physicalRight;
+        double physicalTop;
+        double physicalBottom;
+        if (tile == null) {
+            physicalLeft = 0.0D;
+            physicalRight = 1.0D;
+            physicalTop = 0.0D;
+            physicalBottom = 1.0D;
+        } else {
+            physicalLeft = column / (double) group.columns();
+            physicalRight = (column + 1.0D) / group.columns();
+            physicalTop = 1.0D - (row + 1.0D) / group.rows();
+            physicalBottom = 1.0D - row / (double) group.rows();
+        }
+
+        double[] first = canvasPoint(surface, physicalLeft, physicalTop);
+        double[] second = canvasPoint(surface, physicalRight, physicalTop);
+        double[] third = canvasPoint(surface, physicalRight, physicalBottom);
+        double[] fourth = canvasPoint(surface, physicalLeft, physicalBottom);
+        double left = Math.min(Math.min(first[0], second[0]), Math.min(third[0], fourth[0]));
+        double right = Math.max(Math.max(first[0], second[0]), Math.max(third[0], fourth[0]));
+        double top = Math.min(Math.min(first[1], second[1]), Math.min(third[1], fourth[1]));
+        double bottom = Math.max(Math.max(first[1], second[1]), Math.max(third[1], fourth[1]));
+
+        double closedU = clamp(0.5D, left, right);
+        double closedV = clamp(0.5D, top, bottom);
+        double distance = square(closedU - 0.5D) + square(closedV - 0.5D);
+        // Keep the selected point just inside its real tile. Exact shared edges can otherwise be
+        // rounded into an adjacent empty/disabled cell by ScreenRaycast's floor operation.
+        double marginU = Math.min(0.0001D, Math.max(0.0D, right - left) * 0.05D);
+        double marginV = Math.min(0.0001D, Math.max(0.0D, bottom - top) * 0.05D);
+        double canvasU = clamp(0.5D, left + marginU, right - marginU);
+        double canvasV = clamp(0.5D, top + marginV, bottom - marginV);
+        AimCandidate candidate = new AimCandidate(surface, column, row, tile, canvasU, canvasV,
+                distance);
+        return candidate.betterThan(currentBest) ? candidate : currentBest;
+    }
+
+    private static double[] canvasPoint(ScreenHostNetworkManager.Surface surface,
+            double physicalU, double physicalV) {
+        return new double[] {surface.canvasU((float) physicalU, (float) physicalV),
+                surface.canvasV((float) physicalU, (float) physicalV)};
+    }
+
+    private static double clamp(double value, double minimum, double maximum) {
+        if (maximum < minimum) {
+            return (minimum + maximum) * 0.5D;
+        }
+        return Math.max(minimum, Math.min(maximum, value));
+    }
+
+    private static double square(double value) {
+        return value * value;
+    }
+
+    private record AimCandidate(ScreenHostNetworkManager.Surface surface, int column, int row,
+            BlockPos tile, double canvasU, double canvasV, double distance) {
+        private boolean betterThan(AimCandidate other) {
+            if (other == null || distance < other.distance - 1.0E-12D) {
+                return true;
+            }
+            if (Math.abs(distance - other.distance) > 1.0E-12D) {
+                return false;
+            }
+            int groupOrder = surface.group().groupId().compareTo(other.surface.group().groupId());
+            if (groupOrder != 0) {
+                return groupOrder < 0;
+            }
+            if (tile == null || other.tile == null) {
+                return tile != null && other.tile == null;
+            }
+            return Long.compare(tile.asLong(), other.tile.asLong()) < 0;
+        }
+
+        private Vec3 worldPoint() {
+            ScreenGroup group = surface.group();
+            double physicalU = surface.physicalU((float) canvasU, (float) canvasV);
+            double physicalV = surface.physicalV((float) canvasU, (float) canvasV);
+            if (tile != null) {
+                double inset = 0.0001D;
+                double minU = (column + inset) / group.columns();
+                double maxU = (column + 1.0D - inset) / group.columns();
+                double minV = 1.0D - (row + 1.0D - inset) / group.rows();
+                double maxV = 1.0D - (row + inset) / group.rows();
+                physicalU = clamp(physicalU, minU, maxU);
+                physicalV = clamp(physicalV, minV, maxV);
+            } else {
+                physicalU = clamp(physicalU, 0.0001D, 0.9999D);
+                physicalV = clamp(physicalV, 0.0001D, 0.9999D);
+            }
+            return ScreenGeometry.origin(group.origin(), group.facing())
+                    .add(ScreenGeometry.right(group.facing())
+                            .scale(physicalU * group.columns()))
+                    .add(ScreenGeometry.up(group.facing())
+                            .scale((1.0D - physicalV) * group.rows()));
+        }
     }
 
     private static boolean pointerLockActive() {

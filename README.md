@@ -54,7 +54,7 @@ Displays a color test image and a centered IDLE mark without opening an external
 - Managed tabs, new-window capture, back/forward/reload, current-tab navigation, and single/two/four-pane layouts.
 - Main-frame loading animation and an error page for HTTP, DNS, TLS, and CEF failures.
 - Exit thumbnails are cached locally under `config/minescreen-web-thumbnails/` and displayed while Chromium restores a page.
-- Crosshair-based mouse input. When a page requests Pointer Lock, the virtual cursor is centered and the player view is aligned perpendicular to the physical screen before camera rotation is frozen.
+- Crosshair-based mouse input. When a page requests Pointer Lock, the virtual cursor is centered and the player view turns toward the real physical point carrying the logical image center before camera rotation is frozen.
 
 Optional peer-assisted WEB distribution uses a deterministic direct-player tree. The Minecraft server exchanges only endpoints and session tokens. JPEG page frames use the direct peer connection and never traverse the game server.
 
@@ -83,13 +83,13 @@ Classic VNC is not encrypted. Use a trusted VPN, SSH tunnel, or TLS tunnel outsi
 - Linked fixed keyboard: right-click to enter input mode.
 - Computer preview: built-in mouse and keyboard input.
 - `Esc`: release keyboard mode and WEB Pointer Lock.
-- Pointer Lock always starts from the browser center and aligns the player view to the screen normal, avoiding a retained upward/downward camera angle.
+- Pointer Lock starts from the logical image center. On rotated, irregular, or multi-face host canvases, MineScreen resolves which real physical tile displays UV `(0.5, 0.5)` and aims there; an empty canvas gap falls back to the nearest real displayed point.
 
 ## UI and loading customization
 
 MineScreen media previews, widget frames, text, EditBox content, and carets are composited into one texture by default for ModernUI compatibility. Optional UI adapters can register through `MineScreenUiProvider`.
 
-The native NeoForge config screen uses short English labels to avoid entry overflow and includes an optional original pixel assistant. The screen editor and computer use the same assistant without placing it over controls.
+The native NeoForge config screen uses short English labels to avoid entry overflow. MineScreen's default panels and loading pages use a restrained, minimal visual style without built-in character art.
 
 The following options are available in `config/minescreen-common.toml` and in `Mods -> MineScreen -> Config`:
 
@@ -98,9 +98,12 @@ The following options are available in `config/minescreen-common.toml` and in `M
 - `web_loading_background_color`: ARGB fallback background
 - `web_loading_speed_percent`: 25-300
 - `web_loading_show_thumbnail`
-- `web_loading_show_mascot`
-- `ui_show_mascot`
+- `web_loading_show_custom_decoration`
+- `ui_show_custom_decoration`
+- `ui_custom_decoration_opacity_percent`
 - `ui_provider` and `composite_ui_layer`
+
+Optional transparent artwork can be supplied before packaging in `user_assets/`. `loading_decoration.png` is contain-fitted over the existing thumbnail/default loading background. `panel_decoration.png` is drawn at reduced opacity behind controls inside the same composited GUI layer, so ModernUI cannot separate it from panel text/widgets. The repository does not download third-party art automatically; see `user_assets/README_ZH_CN.txt` for limits.
 
 ## Power behavior
 

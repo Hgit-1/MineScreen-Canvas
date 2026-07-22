@@ -66,6 +66,16 @@ neoForge {
 
 sourceSets.main.resources { srcDir 'src/generated/resources' }
 
+// Optional user-supplied UI art. Missing files are intentionally ignored so the default build
+// remains a clean, minimal interface without generated character art or missing-texture markers.
+tasks.named('processResources', ProcessResources).configure {
+    from('user_assets') {
+        include 'panel_decoration.png'
+        include 'loading_decoration.png'
+        into 'assets/minescreen/textures/gui/custom'
+    }
+}
+
 configurations {
     // JavaCPP API and Windows natives must share one runtime class-path root. NeoForge Jar-in-Jar
     // metadata has no classifier field, so embedding the base and windows-x86_64 artifacts as two

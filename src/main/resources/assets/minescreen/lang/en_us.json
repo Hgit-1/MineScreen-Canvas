@@ -193,6 +193,10 @@
   "minescreen.configuration.ui_provider.tooltip": "auto selects a registered adapter, vanilla disables adapters, or enter an id supplied by an Otyacraft-style integration.",
   "minescreen.configuration.composite_ui_layer": "Composite UI layer",
   "minescreen.configuration.composite_ui_layer.tooltip": "Composites media, frames, glyphs, input text and carets into one texture. Recommended with ModernUI.",
+  "minescreen.configuration.ui_show_custom_decoration": "Show custom panel decoration",
+  "minescreen.configuration.ui_show_custom_decoration.tooltip": "Displays the packaged transparent panel_decoration.png behind controls.",
+  "minescreen.configuration.ui_custom_decoration_opacity_percent": "Panel decoration opacity",
+  "minescreen.configuration.ui_custom_decoration_opacity_percent.tooltip": "0–100 percent; the default 32 percent keeps controls and text readable.",
   "minescreen.configuration.web_peer_distribution": "WEB peer distribution",
   "minescreen.configuration.web_peer_distribution.tooltip": "The server exchanges only endpoints and a random token; compressed frames use a direct player tree. This exposes network addresses to same-screen peers and the current direct link is unencrypted. Enable on server and clients.",
   "minescreen.configuration.web_peer_listen_port": "WEB P2P listen port",
@@ -224,8 +228,6 @@
   "minescreen.configuration.web_loading_speed_percent.tooltip": "25–300 percent; 100 is the normal animation speed.",
   "minescreen.configuration.web_loading_show_thumbnail": "Show page thumbnail",
   "minescreen.configuration.web_loading_show_thumbnail.tooltip": "Displays the last local page snapshot while Chromium restores the page.",
-  "minescreen.configuration.web_loading_show_mascot": "Loading-page assistant",
-  "minescreen.configuration.web_loading_show_mascot.tooltip": "Shows the original MineScreen pixel assistant on loading and error pages.",
-  "minescreen.configuration.ui_show_mascot": "Panel assistant",
-  "minescreen.configuration.ui_show_mascot.tooltip": "Shows the small pixel assistant in MineScreen and native NeoForge configuration panels."
+  "minescreen.configuration.web_loading_show_custom_decoration": "Show custom loading decoration",
+  "minescreen.configuration.web_loading_show_custom_decoration.tooltip": "Contain-fits transparent loading_decoration.png over the page thumbnail or default loading background."
 }

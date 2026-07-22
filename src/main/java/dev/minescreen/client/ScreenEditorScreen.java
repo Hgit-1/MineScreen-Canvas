@@ -23,7 +23,7 @@ import dev.minescreen.client.video.VideoSource;
 import dev.minescreen.client.web.BrowserRequestPolicy;
 import dev.minescreen.client.web.BrowserSession;
 import dev.minescreen.client.ui.MineScreenUiRegistry;
-import dev.minescreen.client.ui.MineScreenAssistant;
+import dev.minescreen.client.ui.CustomUiArtwork;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
@@ -248,12 +248,8 @@ public final class ScreenEditorScreen extends Screen {
                 0xFF1A202B, 0xFF0F141D);
         graphics.fill(panelLeft, panelTop, panelLeft + 4, panelTop + panelHeight, 0xFFFFD43B);
         graphics.fill(panelLeft + 4, panelTop + 30, panelLeft + panelWidth, panelTop + 31, 0xFF394657);
+        CustomUiArtwork.drawPanel(graphics, panelLeft, panelTop, panelWidth, panelHeight);
         graphics.drawString(font, title, panelLeft + 18, panelTop + 12, 0xFFF4F7FB, false);
-        if (MineScreenConfig.UI_SHOW_MASCOT.get()
-                && resolutionButton.getX() - panelLeft > 250) {
-            MineScreenAssistant.drawGui(graphics, resolutionButton.getX() - 30,
-                    panelTop + 1, 2, 220);
-        }
         if (regionId > 0) {
             graphics.drawString(font, Component.translatable("screen.minescreen.region.editing",
                     regionId), panelLeft + 152, panelTop + 12, 0xFFFFD43B, false);

@@ -193,6 +193,10 @@
   "minescreen.configuration.ui_provider.tooltip": "auto自动选择已注册适配器；vanilla禁用适配器；也可填写Otyacraft等适配模块注册的ID。",
   "minescreen.configuration.composite_ui_layer": "单纹理UI合成",
   "minescreen.configuration.composite_ui_layer.tooltip": "将媒体、控件框、文字、文本框内容和光标合成为同一纹理，建议ModernUI用户保持开启。",
+  "minescreen.configuration.ui_show_custom_decoration": "显示自定义面板装饰",
+  "minescreen.configuration.ui_show_custom_decoration.tooltip": "在控件后方显示构建时提供的透明panel_decoration.png。",
+  "minescreen.configuration.ui_custom_decoration_opacity_percent": "面板装饰不透明度",
+  "minescreen.configuration.ui_custom_decoration_opacity_percent.tooltip": "范围0–100%；默认32%，避免装饰干扰控件和文字。",
   "minescreen.configuration.web_peer_distribution": "去中心化WEB画面分发",
   "minescreen.configuration.web_peer_distribution.tooltip": "服务器仅交换地址和随机令牌，压缩画面由玩家直连树传输。会向同屏玩家暴露网络地址，且当前直连未加密；服务器和客户端均需启用。",
   "minescreen.configuration.web_peer_listen_port": "WEB P2P监听端口",
@@ -224,8 +228,6 @@
   "minescreen.configuration.web_loading_speed_percent.tooltip": "范围25–300%；100%为标准速度。",
   "minescreen.configuration.web_loading_show_thumbnail": "显示页面缩略图",
   "minescreen.configuration.web_loading_show_thumbnail.tooltip": "Chromium恢复页面时显示上次退出前的本地页面缩略图。",
-  "minescreen.configuration.web_loading_show_mascot": "加载页像素助手",
-  "minescreen.configuration.web_loading_show_mascot.tooltip": "在加载页与错误页显示原创MineScreen像素助手。",
-  "minescreen.configuration.ui_show_mascot": "配置面板像素助手",
-  "minescreen.configuration.ui_show_mascot.tooltip": "在MineScreen面板和NeoForge原生配置页显示小型像素助手。"
+  "minescreen.configuration.web_loading_show_custom_decoration": "显示自定义加载装饰",
+  "minescreen.configuration.web_loading_show_custom_decoration.tooltip": "将透明loading_decoration.png等比叠加在页面缩略图或默认加载背景上。"
 }

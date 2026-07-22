@@ -115,6 +115,12 @@ public final class MineScreenConfig {
     public static final ModConfigSpec.BooleanValue COMPOSITE_UI_LAYER = BUILDER.comment(
             "Render MineScreen media, widget frames, text and input carets into one texture before compositing. Recommended for ModernUI compatibility.")
             .define("composite_ui_layer", true);
+    public static final ModConfigSpec.BooleanValue UI_SHOW_CUSTOM_DECORATION = BUILDER.comment(
+            "Show packaged user_assets/panel_decoration.png behind MineScreen panel controls.")
+            .define("ui_show_custom_decoration", true);
+    public static final ModConfigSpec.IntValue UI_CUSTOM_DECORATION_OPACITY_PERCENT = BUILDER.comment(
+            "Opacity percentage for the optional transparent panel decoration.")
+            .defineInRange("ui_custom_decoration_opacity_percent", 32, 0, 100);
     public static final ModConfigSpec.ConfigValue<String> CONTROL_INDICATOR_COLOR = BUILDER.comment(
             "Small control indicator color as an ARGB hex string.")
             .define("control_indicator_color", "FFFFD43B");
@@ -139,13 +145,10 @@ public final class MineScreenConfig {
     public static final ModConfigSpec.BooleanValue WEB_LOADING_SHOW_THUMBNAIL = BUILDER.comment(
             "Show the last local page thumbnail behind the WEB loading animation.")
             .define("web_loading_show_thumbnail", true);
-    public static final ModConfigSpec.BooleanValue WEB_LOADING_SHOW_MASCOT = BUILDER.comment(
-            "Show the small pixel assistant on WEB loading and error pages.")
-            .define("web_loading_show_mascot", true);
-    public static final ModConfigSpec.BooleanValue UI_SHOW_MASCOT = BUILDER.comment(
-            "Show the small pixel assistant in MineScreen configuration panels.")
-            .define("ui_show_mascot", true);
-
+    public static final ModConfigSpec.BooleanValue WEB_LOADING_SHOW_CUSTOM_DECORATION = BUILDER.comment(
+            "Overlay packaged user_assets/loading_decoration.png on the WEB loading background.",
+            "Transparent pixels preserve the cached thumbnail or default animated background.")
+            .define("web_loading_show_custom_decoration", true);
     public static final ModConfigSpec SPEC = BUILDER.build();
 
     public static int defaultWidthBlocks() {

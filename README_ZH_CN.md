@@ -121,7 +121,7 @@
 - 手持 `minescreen:keyboard` 并瞄准屏幕：进入按键输入模式。此时移动键被键盘模式占用，无法行走属于预期行为。
 - 右键已通过延长线连接屏幕的固定键盘：进入固定键盘输入模式，可有多个玩家/键盘同时输入。
 - `Esc`：退出键盘输入模式，并释放网页请求的鼠标锁定。
-- WEB请求鼠标锁定时，浏览器虚拟光标会回到中心，玩家视角会校正为垂直正对当前屏幕面，然后冻结MC相机旋转，避免保留奇怪仰角。
+- WEB请求鼠标锁定时，浏览器虚拟光标会回到逻辑图像中心；系统会在旋转、异面、不连续联合画布中找到实际显示该中心点的物理屏幕位置并让准星对准它，然后冻结MC相机旋转。若中心恰好位于空洞，则选择逻辑距离最近的真实显示点。
 - 滚轮：准星仍位于屏幕时转发给页面/VNC；准星移开后立即恢复物品栏滚轮。
 - 主手铁镐或更高等级镐 + 左键：拆卸屏幕，且该左键不会记录为内容点击；低等级镐、其他工具和空手没有拆卸进度。
 - 控制期间仅在可配置角落显示小号高对比度“准星控制中”。
@@ -143,9 +143,9 @@
 
 MineScreen默认启用单纹理UI合成：媒体画面、控件框、文本、文本框内容和光标先进入同一透明纹理，再一次性绘制，避免ModernUI把文字当作独立后层模糊。`ui_provider` 可选择已注册的外部UI适配器；Otyacraft Engine Renewed、Cloth Config API和Architectury API需要各自的适配模块，因为它们不是同一种通用换肤接口。
 
-NeoForge原生配置页、屏幕编辑器和主机面板可显示原创像素风二次元助手。`ui_show_mascot` 可关闭面板装饰；装饰不覆盖按钮、文本框或预览画面。
+NeoForge原生配置页、屏幕编辑器、主机面板和网页加载页默认采用纯简约风格，不再内置像素风或二次元人物装饰。
 
-网页加载页支持配置文件自定义：`web_loading_style` 可选 `ORBIT`、`PULSE`、`MINIMAL`，并可调整 `web_loading_accent_color`、`web_loading_background_color`、`web_loading_speed_percent`、缩略图和像素助手开关。
+网页加载页支持配置文件自定义：`web_loading_style` 可选 `ORBIT`、`PULSE`、`MINIMAL`，并可调整`web_loading_accent_color`、`web_loading_background_color`、`web_loading_speed_percent`和缩略图开关。透明`loading_decoration.png`会保持比例叠加在缓存缩略图或默认背景上，不会拉伸；`panel_decoration.png`在控件后方以较低不透明度绘制，并与文本、文本框、预览画面一起进入同一UI合成层。可分别通过`web_loading_show_custom_decoration`、`ui_show_custom_decoration`和`ui_custom_decoration_opacity_percent`调整。仓库不会擅自下载网络图片。
 
 关闭主机 GUI 不会关闭内容会话；主机方块正面会继续渲染缩小实时预览，作为待机显示。
 

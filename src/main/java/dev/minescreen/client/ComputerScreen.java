@@ -28,7 +28,7 @@ import dev.minescreen.client.web.BrowserRequestPolicy;
 import dev.minescreen.client.video.VideoSource;
 import dev.minescreen.client.web.BrowserSession;
 import dev.minescreen.client.ui.MineScreenUiRegistry;
-import dev.minescreen.client.ui.MineScreenAssistant;
+import dev.minescreen.client.ui.CustomUiArtwork;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
@@ -362,16 +362,12 @@ public final class ComputerScreen extends Screen {
         graphics.fillGradient(panelLeft, panelTop, panelLeft + panelWidth, panelTop + panelHeight,
                 0xFF151B24, 0xFF080C12);
         graphics.fill(panelLeft, panelTop + 33, panelLeft + panelWidth, panelTop + 35, 0xFFFFD43B);
+        CustomUiArtwork.drawPanel(graphics, panelLeft, panelTop, panelWidth, panelHeight);
         graphics.drawString(font, title, panelLeft + 34, panelTop + 13, 0xFFF3F7FC, false);
-        boolean showAssistant = MineScreenConfig.UI_SHOW_MASCOT.get();
-        if (showAssistant) {
-            MineScreenAssistant.drawGui(graphics, panelLeft + panelWidth - 34,
-                    panelTop + 1, 2, 220);
-        }
         ScreenGroup powerGroup = hostNetwork == null ? group : hostNetwork.rootGroup();
         if (powerGroup != null && !ScreenPowerManager.isPowered(powerGroup)) {
             Component warning = Component.translatable("screen.minescreen.power.off");
-            int right = panelLeft + panelWidth - (showAssistant ? 42 : 14);
+            int right = panelLeft + panelWidth - 14;
             graphics.drawString(font, warning, right - font.width(warning), panelTop + 13,
                     0xFFFF6B6B, false);
         }
