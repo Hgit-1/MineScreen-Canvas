@@ -1,31 +1,57 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
   <title id="title">MineScreen Canvas</title>
-  <desc id="desc">A connected four-panel screen block with a yellow control cursor.</desc>
+  <desc id="desc">A Minecraft-style screen block showing the MineScreen IDLE test pattern with the loading mascot in the lower-right corner.</desc>
 
-  <!-- Transparent background is intentional: this mark is used on README pages and dark mod UIs. -->
-  <path d="M64 56h384l24 24v336l-24 24H64l-24-24V80z" fill="#111722"/>
-  <path d="M448 56l24 24v336l-24 24V56z" fill="#0b1018"/>
-  <path d="M64 440h384l-24 24H88z" fill="#0b1018"/>
+  <!-- Stepped block chassis; the transparent canvas is intentional. -->
+  <path d="M56 32h400v24h24v376h-24v24H56v-24H32V56h24z" fill="#111722"/>
+  <path d="M456 56h24v376h-24zM56 432h400v24H56z" fill="#090e16"/>
+  <path d="M48 48h416v376H48z" fill="#273342"/>
+  <path d="M60 64h392v240H60z" fill="#0a111a"/>
 
-  <!-- Charcoal bezel. -->
-  <path d="M80 80h352v336H80z" fill="#263242"/>
-  <path d="M96 96h320v288H96z" fill="#0a1520"/>
+  <!-- MineScreen IDLE color bars. -->
+  <path d="M68 76h47v141H68z" fill="#fff"/>
+  <path d="M115 76h47v141h-47z" fill="#ffdc30"/>
+  <path d="M162 76h47v141h-47z" fill="#40dcff"/>
+  <path d="M209 76h47v141h-47z" fill="#50dc60"/>
+  <path d="M256 76h47v141h-47z" fill="#ff50d2"/>
+  <path d="M303 76h47v141h-47z" fill="#ff4848"/>
+  <path d="M350 76h47v141h-47z" fill="#4060ff"/>
+  <path d="M397 76h47v141h-47z" fill="#141820"/>
 
-  <!-- Four connected display tiles. The dark cross keeps the joined-panel grid readable at 32px. -->
-  <path d="M112 112h132v108H112z" fill="#10c7e8"/>
-  <path d="M268 112h132v108H268z" fill="#1b8fe3"/>
-  <path d="M112 248h132v112H112z" fill="#08b9c9"/>
-  <path d="M268 248h132v112H268z" fill="#4c75d5"/>
+  <!-- Stepped gray lower band from the in-game test texture. -->
+  <path d="M68 217h47v72H68z" fill="#12161f"/>
+  <path d="M115 217h47v72h-47z" fill="#151a23"/>
+  <path d="M162 217h47v72h-47z" fill="#181d27"/>
+  <path d="M209 217h47v72h-47z" fill="#1b202b"/>
+  <path d="M256 217h47v72h-47z" fill="#1e242f"/>
+  <path d="M303 217h47v72h-47z" fill="#222834"/>
+  <path d="M350 217h47v72h-47z" fill="#262c39"/>
+  <path d="M397 217h47v72h-47z" fill="#2a3140"/>
 
-  <!-- Small flat signal bars imply a live, connected canvas without using vendor marks. -->
-  <path d="M128 184h18v20h-18zM154 164h18v40h-18zM180 144h18v60h-18z" fill="#d9fbff" opacity=".86"/>
-  <path d="M300 316h18v24h-18zM326 294h18v46h-18zM352 270h18v70h-18z" fill="#d8e5ff" opacity=".78"/>
+  <!-- Orientation cross and central IDLE plate. -->
+  <path d="M255 76h3v213h-3zM68 181h376v3H68z" fill="#f4f7fa"/>
+  <path d="M193 160h126v44H193z" fill="#0a0d14"/>
+  <g fill="#ffdd3b">
+    <!-- I -->
+    <path d="M211 167h18v6h-6v18h6v6h-18v-6h6v-18h-6z"/>
+    <!-- D -->
+    <path d="M235 167h12l6 6v18l-6 6h-12zm6 6v18h6v-18z"/>
+    <!-- L -->
+    <path d="M259 167h6v24h12v6h-18z"/>
+    <!-- E -->
+    <path d="M283 167h18v6h-12v6h12v6h-12v6h12v6h-18z"/>
+  </g>
 
-  <!-- Warm control accent: a compact cursor that remains legible when the icon is reduced. -->
-  <path d="M286 150v92l24-22 26 52 24-14-26-52 42-2z" fill="#ffd447" stroke="#111722" stroke-width="8" stroke-linejoin="round"/>
+  <!-- Pixel vents, status lamp, and connection markings on the lower bezel. -->
+  <g fill="#111923">
+    <path d="M82 332h9v45h-9zM98 332h9v45h-9zM114 332h9v45h-9zM130 332h9v45h-9z"/>
+    <path d="M80 392h25v17H80z"/>
+  </g>
+  <path d="M84 396h17v9H84z" fill="#ffdd3b"/>
+  <g fill="#1a2430">
+    <path d="M168 336h113v17H168zM168 364h81v17h-81zM168 392h57v17h-57z"/>
+  </g>
 
-  <!-- Connection/status port below the display. -->
-  <path d="M184 416h144v28H184z" fill="#263242"/>
-  <path d="M208 444h96v20h-96z" fill="#111722"/>
-  <path d="M224 448h64v8h-64z" fill="#ffd447"/>
+  <!-- Pixel-sampled from user_assets/loading_decoration.png; kept external for editable SVG source. -->
+  <image href="minescreen-logo-mascot.png" x="292" y="236" width="188" height="220" preserveAspectRatio="xMidYMid meet" style="image-rendering:pixelated"/>
 </svg>

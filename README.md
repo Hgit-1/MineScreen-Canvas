@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/minescreen-logo.svg" alt="MineScreen Canvas logo" width="192">
+  <img src="src/main/resources/minescreen.png" alt="MineScreen Canvas logo" width="192">
 </p>
 
 # MineScreen Canvas
