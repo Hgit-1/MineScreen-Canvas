@@ -120,7 +120,7 @@ public final class MineScreenConfig {
             .define("ui_show_custom_decoration", true);
     public static final ModConfigSpec.IntValue UI_CUSTOM_DECORATION_OPACITY_PERCENT = BUILDER.comment(
             "Opacity percentage for the optional transparent panel decoration.")
-            .defineInRange("ui_custom_decoration_opacity_percent", 32, 0, 100);
+            .defineInRange("ui_custom_decoration_opacity_percent", 55, 0, 100);
     public static final ModConfigSpec.ConfigValue<String> CONTROL_INDICATOR_COLOR = BUILDER.comment(
             "Small control indicator color as an ARGB hex string.")
             .define("control_indicator_color", "FFFFD43B");

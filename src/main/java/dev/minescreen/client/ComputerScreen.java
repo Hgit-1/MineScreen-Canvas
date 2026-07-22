@@ -362,7 +362,6 @@ public final class ComputerScreen extends Screen {
         graphics.fillGradient(panelLeft, panelTop, panelLeft + panelWidth, panelTop + panelHeight,
                 0xFF151B24, 0xFF080C12);
         graphics.fill(panelLeft, panelTop + 33, panelLeft + panelWidth, panelTop + 35, 0xFFFFD43B);
-        CustomUiArtwork.drawPanel(graphics, panelLeft, panelTop, panelWidth, panelHeight);
         graphics.drawString(font, title, panelLeft + 34, panelTop + 13, 0xFFF3F7FC, false);
         ScreenGroup powerGroup = hostNetwork == null ? group : hostNetwork.rootGroup();
         if (powerGroup != null && !ScreenPowerManager.isPowered(powerGroup)) {
@@ -460,6 +459,10 @@ public final class ComputerScreen extends Screen {
                     panelLeft + 146, panelTop + 242,
                     Math.max(200, contentPreviewLeft - panelLeft - 160), 0xFF96A9BF);
         }
+        // Draw after opaque previews/content but before the widget pass. The alpha-cropped art is
+        // placed in the lower-right reserve area, so it remains visible instead of being covered
+        // by the preview texture while still sharing the final GUI compositor layer.
+        CustomUiArtwork.drawPanel(graphics, panelLeft, panelTop, panelWidth, panelHeight);
         renderWidgetsDirect(graphics, mouseX, mouseY, partialTick);
     }
 

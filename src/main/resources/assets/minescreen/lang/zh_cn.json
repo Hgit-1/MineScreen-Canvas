@@ -196,7 +196,7 @@
   "minescreen.configuration.ui_show_custom_decoration": "显示自定义面板装饰",
   "minescreen.configuration.ui_show_custom_decoration.tooltip": "在控件后方显示构建时提供的透明panel_decoration.png。",
   "minescreen.configuration.ui_custom_decoration_opacity_percent": "面板装饰不透明度",
-  "minescreen.configuration.ui_custom_decoration_opacity_percent.tooltip": "范围0–100%；默认32%，避免装饰干扰控件和文字。",
+  "minescreen.configuration.ui_custom_decoration_opacity_percent.tooltip": "范围0–100%；默认55%，兼顾装饰可见度与控件可读性。",
   "minescreen.configuration.web_peer_distribution": "去中心化WEB画面分发",
   "minescreen.configuration.web_peer_distribution.tooltip": "服务器仅交换地址和随机令牌，压缩画面由玩家直连树传输。会向同屏玩家暴露网络地址，且当前直连未加密；服务器和客户端均需启用。",
   "minescreen.configuration.web_peer_listen_port": "WEB P2P监听端口",

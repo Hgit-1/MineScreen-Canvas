@@ -196,7 +196,7 @@
   "minescreen.configuration.ui_show_custom_decoration": "Show custom panel decoration",
   "minescreen.configuration.ui_show_custom_decoration.tooltip": "Displays the packaged transparent panel_decoration.png behind controls.",
   "minescreen.configuration.ui_custom_decoration_opacity_percent": "Panel decoration opacity",
-  "minescreen.configuration.ui_custom_decoration_opacity_percent.tooltip": "0–100 percent; the default 32 percent keeps controls and text readable.",
+  "minescreen.configuration.ui_custom_decoration_opacity_percent.tooltip": "0–100 percent; the default 55 percent balances visibility and readable controls.",
   "minescreen.configuration.web_peer_distribution": "WEB peer distribution",
   "minescreen.configuration.web_peer_distribution.tooltip": "The server exchanges only endpoints and a random token; compressed frames use a direct player tree. This exposes network addresses to same-screen peers and the current direct link is unencrypted. Enable on server and clients.",
   "minescreen.configuration.web_peer_listen_port": "WEB P2P listen port",

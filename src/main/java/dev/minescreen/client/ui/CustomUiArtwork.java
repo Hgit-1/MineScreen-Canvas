@@ -66,18 +66,23 @@ public final class CustomUiArtwork {
         if (!MineScreenConfig.UI_SHOW_CUSTOM_DECORATION.get() || !panelAvailable()) {
             return;
         }
-        int maximumWidth = Math.max(1, Math.min(260, width / 3));
-        int maximumHeight = Math.max(1, height - 46);
-        double scale = Math.min(maximumWidth / (double) panelWidth,
-                maximumHeight / (double) panelHeight);
-        int drawWidth = Math.max(1, (int) Math.round(panelWidth * scale));
-        int drawHeight = Math.max(1, (int) Math.round(panelHeight * scale));
+        Bounds bounds = alphaBounds(panel);
+        if (bounds == null) {
+            return;
+        }
+        int maximumWidth = Math.max(1, Math.min(150, width / 4));
+        int maximumHeight = Math.max(1, Math.min(190, height / 2));
+        double scale = Math.min(maximumWidth / (double) bounds.width(),
+                maximumHeight / (double) bounds.height());
+        int drawWidth = Math.max(1, (int) Math.round(bounds.width() * scale));
+        int drawHeight = Math.max(1, (int) Math.round(bounds.height() * scale));
         int x = left + width - drawWidth - 8;
         int y = top + height - drawHeight - 8;
         float opacity = MineScreenConfig.UI_CUSTOM_DECORATION_OPACITY_PERCENT.get() / 100.0F;
         graphics.flush();
         graphics.setColor(1.0F, 1.0F, 1.0F, opacity);
-        graphics.blit(PANEL, x, y, 0.0F, 0.0F, drawWidth, drawHeight, panelWidth, panelHeight);
+        graphics.blit(PANEL, x, y, bounds.left(), bounds.top(), drawWidth, drawHeight,
+                panelWidth, panelHeight);
         graphics.flush();
         graphics.setColor(1.0F, 1.0F, 1.0F, 1.0F);
     }

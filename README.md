@@ -18,7 +18,7 @@ as independent panes or as one panoramic display.
 ## Install
 
 1. Install Minecraft Java 1.21.1 with NeoForge 21.1.219.
-2. Put `minescreen-0.3.0.jar` in the client `mods` folder.
+2. Put `minescreen-1.0.0.jar` in the client `mods` folder.
 3. For WEB mode, also install the official MCEF NeoForge mod `2.1.6-1.21.1`.
 4. Start the game once, then configure MineScreen from `Mods -> MineScreen -> Config`.
 

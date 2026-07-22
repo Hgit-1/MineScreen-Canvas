@@ -248,7 +248,6 @@ public final class ScreenEditorScreen extends Screen {
                 0xFF1A202B, 0xFF0F141D);
         graphics.fill(panelLeft, panelTop, panelLeft + 4, panelTop + panelHeight, 0xFFFFD43B);
         graphics.fill(panelLeft + 4, panelTop + 30, panelLeft + panelWidth, panelTop + 31, 0xFF394657);
-        CustomUiArtwork.drawPanel(graphics, panelLeft, panelTop, panelWidth, panelHeight);
         graphics.drawString(font, title, panelLeft + 18, panelTop + 12, 0xFFF4F7FB, false);
         if (regionId > 0) {
             graphics.drawString(font, Component.translatable("screen.minescreen.region.editing",
@@ -276,6 +275,7 @@ public final class ScreenEditorScreen extends Screen {
 
         renderContentStatus(graphics);
         renderGuide(graphics);
+        CustomUiArtwork.drawPanel(graphics, panelLeft, panelTop, panelWidth, panelHeight);
         renderWidgetsDirect(graphics, mouseX, mouseY, partialTick);
     }
 

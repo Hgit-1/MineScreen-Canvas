@@ -23,7 +23,7 @@ public final class FfmpegInputOptions {
         av_dict_set(options, "reconnect_streamed", "1", 0);
         av_dict_set(options, "reconnect_on_network_error", "1", 0);
         av_dict_set(options, "reconnect_delay_max", "5", 0);
-        av_dict_set(options, "user_agent", "MineScreen/0.3.0", 0);
+        av_dict_set(options, "user_agent", "MineScreen/1.0.0", 0);
         return options;
     }
 
