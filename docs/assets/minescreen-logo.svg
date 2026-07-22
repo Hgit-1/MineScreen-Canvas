@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">MineScreen Canvas</title>
+  <desc id="desc">A connected four-panel screen block with a yellow control cursor.</desc>
+
+  <!-- Transparent background is intentional: this mark is used on README pages and dark mod UIs. -->
+  <path d="M64 56h384l24 24v336l-24 24H64l-24-24V80z" fill="#111722"/>
+  <path d="M448 56l24 24v336l-24 24V56z" fill="#0b1018"/>
+  <path d="M64 440h384l-24 24H88z" fill="#0b1018"/>
+
+  <!-- Charcoal bezel. -->
+  <path d="M80 80h352v336H80z" fill="#263242"/>
+  <path d="M96 96h320v288H96z" fill="#0a1520"/>
+
+  <!-- Four connected display tiles. The dark cross keeps the joined-panel grid readable at 32px. -->
+  <path d="M112 112h132v108H112z" fill="#10c7e8"/>
+  <path d="M268 112h132v108H268z" fill="#1b8fe3"/>
+  <path d="M112 248h132v112H112z" fill="#08b9c9"/>
+  <path d="M268 248h132v112H268z" fill="#4c75d5"/>
+
+  <!-- Small flat signal bars imply a live, connected canvas without using vendor marks. -->
+  <path d="M128 184h18v20h-18zM154 164h18v40h-18zM180 144h18v60h-18z" fill="#d9fbff" opacity=".86"/>
+  <path d="M300 316h18v24h-18zM326 294h18v46h-18zM352 270h18v70h-18z" fill="#d8e5ff" opacity=".78"/>
+
+  <!-- Warm control accent: a compact cursor that remains legible when the icon is reduced. -->
+  <path d="M286 150v92l24-22 26 52 24-14-26-52 42-2z" fill="#ffd447" stroke="#111722" stroke-width="8" stroke-linejoin="round"/>
+
+  <!-- Connection/status port below the display. -->
+  <path d="M184 416h144v28H184z" fill="#263242"/>
+  <path d="M208 444h96v20h-96z" fill="#111722"/>
+  <path d="M224 448h64v8h-64z" fill="#ffd447"/>
+</svg>

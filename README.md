@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/minescreen-logo.svg" alt="MineScreen Canvas logo" width="192">
+</p>
+
 # MineScreen Canvas
 
 [简体中文](README_ZH_CN.md)

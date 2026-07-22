@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/minescreen-logo.svg" alt="MineScreen Canvas 标志" width="192">
+</p>
+
 # MineScreen Canvas
 
 MineScreen Canvas 是面向玩家的 Minecraft Java 版屏幕模组，目标环境为 Minecraft 1.21.1 与
