@@ -15,7 +15,7 @@ IDLE 模式检查屏幕方向、拼合关系和画面位置。
 ## 安装
 
 1. 安装 Minecraft Java 1.21.1 和 NeoForge 21.1.219。
-2. 将 `minescreen-1.0.0.jar` 放入客户端 `mods` 文件夹。
+2. 将 `minescreen-1.0.1.jar` 放入客户端 `mods` 文件夹。
 3. 使用 WEB 模式时，在客户端另外安装官方 MCEF NeoForge 模组 `2.1.6-1.21.1`。
 4. 首次进入游戏后，在“模组 -> MineScreen -> 配置”中检查设置。
 

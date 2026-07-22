@@ -35,6 +35,15 @@ public final class ClientInput {
     private static ActiveTarget active;
     private static ScreenInputTarget keyboardFocus;
     private static BlockPos fixedKeyboardPos;
+    /**
+     * The screen group attached to the currently selected fixed keyboard.  The player is normally
+     * looking at the keyboard when it is activated, so {@link #active} is null at that moment.  A
+     * WEB game can request Pointer Lock immediately afterwards; retaining the group lets the lock
+     * callback still aim the camera at the logical canvas centre.
+     */
+    private static ScreenGroup fixedKeyboardGroup;
+    /** Set while waiting for a WEB Pointer Lock callback after fixed-keyboard activation. */
+    private static boolean recenterOnPointerLock;
     private static boolean keyboardExitLatched;
     private static final java.util.Set<Integer> pressedButtons = new java.util.HashSet<>();
 
@@ -116,6 +125,13 @@ public final class ClientInput {
             sendCrosshairMove(active);
         }
         updateKeyboardMode(minecraft, usableWindow);
+        // A fixed keyboard is often clicked while the player is looking away from the screen, so
+        // there is no active ray target to use for centering.  Defer the camera snap until the page
+        // has actually requested Pointer Lock; merely entering keyboard mode must not move the
+        // player's view.
+        if (pointerLockActive() && recenterOnPointerLock) {
+            centerViewForPointerLock();
+        }
     }
 
     @SubscribeEvent
@@ -222,6 +238,8 @@ public final class ClientInput {
                         Component.translatable("screen.minescreen.keyboard.no_link"), true);
             } else {
                 fixedKeyboardPos = blockHit.getBlockPos().immutable();
+                fixedKeyboardGroup = linked;
+                recenterOnPointerLock = true;
                 keyboardExitLatched = false;
                 minecraft.player.displayClientMessage(
                         Component.translatable("screen.minescreen.keyboard.entered"), true);
@@ -404,14 +422,21 @@ public final class ClientInput {
      */
     public static void centerViewForPointerLock() {
         Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.player == null || minecraft.level == null || active == null) {
+        if (minecraft.player == null || minecraft.level == null) {
             return;
         }
-        ScreenGroup group = ScreenGroupManager.group(active.groupId());
+        // Prefer the fixed-keyboard association when present.  During activation the ray is on the
+        // keyboard rather than the display, therefore active can still refer to another screen (or
+        // be null).  Once the camera is aligned this flag is cleared and normal ray-driven routing
+        // resumes.
+        ScreenGroup group = fixedKeyboardGroup != null
+                ? fixedKeyboardGroup
+                : active == null ? null : ScreenGroupManager.group(active.groupId());
         if (group == null) {
             return;
         }
-        Vec3 target = logicalCentreTarget(minecraft.level, group, active.regionId());
+        int regionId = fixedKeyboardGroup != null || active == null ? 0 : active.regionId();
+        Vec3 target = logicalCentreTarget(minecraft.level, group, regionId);
         if (target == null) {
             return;
         }
@@ -429,6 +454,7 @@ public final class ClientInput {
         minecraft.player.setXRot(pitch);
         minecraft.player.yRotO = yaw;
         minecraft.player.xRotO = pitch;
+        recenterOnPointerLock = false;
     }
 
     private static Vec3 logicalCentreTarget(ClientLevel level, ScreenGroup activeGroup,
@@ -638,15 +664,22 @@ public final class ClientInput {
                     || minecraft.player.distanceToSqr(fixedKeyboardPos.getX() + 0.5D,
                             fixedKeyboardPos.getY() + 0.5D, fixedKeyboardPos.getZ() + 0.5D) > 64.0D) {
                 fixedKeyboardPos = null;
+                fixedKeyboardGroup = null;
+                recenterOnPointerLock = false;
             } else {
                 ScreenGroup linked = ScreenLinkResolver.findGroup(minecraft.level, fixedKeyboardPos);
                 desired = linked == null ? null : inputTarget(linked);
+                if (linked != null) {
+                    fixedKeyboardGroup = linked;
+                }
             }
         } else if (handheldCandidate && !keyboardExitLatched) {
             desired = active.target();
         }
         if (!handheldCandidate && fixedKeyboardPos == null) {
             keyboardExitLatched = false;
+            fixedKeyboardGroup = null;
+            recenterOnPointerLock = false;
         }
         setKeyboardFocus(desired);
         if (keyboardFocus != null) {
@@ -686,6 +719,8 @@ public final class ClientInput {
     private static void exitKeyboardMode() {
         keyboardExitLatched = true;
         fixedKeyboardPos = null;
+        fixedKeyboardGroup = null;
+        recenterOnPointerLock = false;
         setKeyboardFocus(null);
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.player != null) {
