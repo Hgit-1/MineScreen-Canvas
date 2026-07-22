@@ -1,0 +1,117 @@
+name: Build MineScreen
+
+"on":
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: minescreen-build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and test (Windows x64)
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Read and validate mod version
+        id: version
+        shell: pwsh
+        run: |
+          $versionLine = Get-Content -LiteralPath gradle.properties |
+            Where-Object { $_ -match '^mod_version=' } |
+            Select-Object -First 1
+          if (-not $versionLine) {
+            throw 'mod_version is missing from gradle.properties'
+          }
+          $version = ($versionLine -replace '^mod_version=', '').Trim()
+          if ($version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(?:[-+].+)?$') {
+            throw "Invalid mod_version: $version"
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+          if ($env:GITHUB_REF -like 'refs/tags/v*') {
+            $tagVersion = $env:GITHUB_REF_NAME.Substring(1)
+            if ($tagVersion -ne $version) {
+              throw "Release tag v$tagVersion does not match mod_version $version"
+            }
+          }
+
+      - name: Build, test, and package
+        shell: pwsh
+        run: .\gradlew.bat clean build --no-daemon --stacktrace
+
+      - name: Prepare distributable files
+        id: package
+        shell: pwsh
+        env:
+          MOD_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $jar = Get-ChildItem -LiteralPath build/libs -Filter "minescreen-$env:MOD_VERSION.jar" |
+            Select-Object -First 1
+          if (-not $jar) {
+            throw "Expected build/libs/minescreen-$env:MOD_VERSION.jar was not produced"
+          }
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item -LiteralPath $jar.FullName -Destination (Join-Path (Get-Location) dist)
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $jar.FullName).Hash.ToUpperInvariant()
+          "$hash  $($jar.Name)" | Out-File -FilePath dist/SHA256SUMS.txt -Encoding utf8NoBOM
+          "jar=$($jar.Name)" >> $env:GITHUB_OUTPUT
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: minescreen-${{ steps.version.outputs.version }}-${{ github.sha }}
+          path: dist
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish tagged release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download Windows build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: minescreen-${{ needs.build.outputs.version }}-${{ github.sha }}
+          path: dist
+
+      - name: Publish GitHub Release
+        shell: bash
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/*.jar dist/SHA256SUMS.txt \
+              --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/*.jar dist/SHA256SUMS.txt \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "MineScreen Canvas $GITHUB_REF_NAME" --generate-notes
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
