@@ -62,6 +62,43 @@ jobs:
         shell: pwsh
         run: .\gradlew.bat clean build --no-daemon --stacktrace
 
+      - name: Dedicated-server lifecycle smoke test
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path run | Out-Null
+          @'
+          # Accepted only for the disposable CI smoke-test server.
+          eula=true
+          '@ | Set-Content -LiteralPath run/eula.txt -Encoding ascii
+          @'
+          online-mode=false
+          level-name=qa-world
+          motd=MineScreen CI
+          max-players=1
+          view-distance=2
+          simulation-distance=2
+          '@ | Set-Content -LiteralPath run/server.properties -Encoding ascii
+
+          .\gradlew.bat runServerSmoke --no-daemon --stacktrace
+          $log = Get-Content -LiteralPath run/logs/latest.log -Raw
+          $required = @(
+            'MineScreen ${{ steps.version.outputs.version }} (minescreen)',
+            'Done (',
+            'MineScreen dedicated-server smoke test reached SERVER_STARTED',
+            'All dimensions are saved'
+          )
+          foreach ($text in $required) {
+            if (-not $log.Contains($text)) {
+              throw "Dedicated-server smoke test did not produce required marker: $text"
+            }
+          }
+          if ($log -match '(?m)^\[[^\r\n]+/ERROR\]') {
+            throw 'Dedicated-server smoke test logged an ERROR'
+          }
+          if ($log -match 'ClassNotFoundException|NoClassDefFoundError|Mixin apply failed') {
+            throw 'Dedicated-server smoke test found a classloading or mixin failure'
+          }
+
       - name: Prepare distributable files
         id: package
         shell: pwsh
@@ -77,6 +114,11 @@ jobs:
           Copy-Item -LiteralPath $jar.FullName -Destination (Join-Path (Get-Location) dist)
           $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $jar.FullName).Hash.ToUpperInvariant()
           "$hash  $($jar.Name)" | Out-File -FilePath dist/SHA256SUMS.txt -Encoding utf8NoBOM
+          $notes = "RELEASE_NOTES_$env:MOD_VERSION.md"
+          if (-not (Test-Path -LiteralPath $notes)) {
+            throw "Expected release notes file was not found: $notes"
+          }
+          Copy-Item -LiteralPath $notes -Destination dist/RELEASE_NOTES.md
           "jar=$($jar.Name)" >> $env:GITHUB_OUTPUT
 
       - name: Upload build artifact
@@ -108,10 +150,15 @@ jobs:
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" dist/*.jar dist/SHA256SUMS.txt \
               --repo "$GITHUB_REPOSITORY" --clobber
+            gh release edit "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "MineScreen Canvas $GITHUB_REF_NAME" \
+              --notes-file dist/RELEASE_NOTES.md
           else
             gh release create "$GITHUB_REF_NAME" dist/*.jar dist/SHA256SUMS.txt \
               --repo "$GITHUB_REPOSITORY" \
-              --title "MineScreen Canvas $GITHUB_REF_NAME" --generate-notes
+              --title "MineScreen Canvas $GITHUB_REF_NAME" \
+              --notes-file dist/RELEASE_NOTES.md
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

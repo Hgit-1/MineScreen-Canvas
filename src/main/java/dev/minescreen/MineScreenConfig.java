@@ -82,6 +82,31 @@ public final class MineScreenConfig {
     public static final ModConfigSpec.IntValue MAX_WEB_TABS_PER_SESSION = BUILDER.comment(
             "Maximum Chromium tabs kept by one WEB session. Restored tabs are created one per client tick to avoid a native-memory and render-thread spike.")
             .defineInRange("max_web_tabs_per_session", 6, 1, 16);
+    public static final ModConfigSpec.IntValue CREATE_STATION_SCAN_RADIUS = BUILDER.comment(
+            "Maximum block radius used to associate a traffic display with the nearest Create station when its imported LCD template has no explicit coordinate binding. Results are cached and never scanned per rendered frame.")
+            .defineInRange("create_station_scan_radius", 16, 2, 32);
+    public static final ModConfigSpec.IntValue CARRIAGE_ARRIVAL_NOTICE_SECONDS = BUILDER.comment(
+            "Seconds before predicted arrival when carriage LCDs switch to the prepare-to-alight notice. Minimum 10 seconds keeps the warning useful for passengers.")
+            .defineInRange("carriage_arrival_notice_seconds", 10, 10, 120);
+    public static final ModConfigSpec.BooleanValue CREATE_ETA_LEARNING = BUILDER.comment(
+            "Persist real Create station-to-station runtimes and use them to calibrate ETA.",
+            "Acceleration, braking, curves and schedule/add-on speed limits are learned; red-signal delay is stored separately so one obstruction does not permanently slow the route.")
+            .define("create_eta_learning", true);
+    public static final ModConfigSpec.IntValue CREATE_ETA_SAMPLE_WINDOW = BUILDER.comment(
+            "Recent completed runs retained for each Create graph/from/to/direction/service-type segment.")
+            .defineInRange("create_eta_sample_window", 15, 3, 64);
+    public static final ModConfigSpec.IntValue CREATE_ETA_MIN_SAMPLES = BUILDER.comment(
+            "Completed runs required before a learned segment replaces the fallback prediction.")
+            .defineInRange("create_eta_min_samples", 2, 1, 10);
+    public static final ModConfigSpec.IntValue CREATE_ETA_MAX_SEGMENTS = BUILDER.comment(
+            "Maximum persisted Create route-segment records. Oldest unused records are removed first.")
+            .defineInRange("create_eta_max_segments", 2048, 128, 16384);
+    public static final ModConfigSpec.BooleanValue TRAFFIC_TEMPLATE_SYNC = BUILDER.comment(
+            "Synchronize compiled script_scene_v1 traffic manifests between multiplayer clients. JavaScript source and local sidecar files are never uploaded or executed remotely.")
+            .define("traffic_template_sync", true);
+    public static final ModConfigSpec.IntValue MAX_SYNCED_TRAFFIC_TEMPLATES = BUILDER.comment(
+            "Maximum number of compiled traffic templates cached by one server world. Each manifest is limited to 256 KiB.")
+            .defineInRange("max_synced_traffic_templates", 64, 1, 128);
     public static final ModConfigSpec.IntValue VNC_COMPRESSION_LEVEL = BUILDER.comment(
             "TightVNC zlib compression level requested from the RFB server. 9 saves the most bandwidth but uses more server CPU.")
             .defineInRange("vnc_compression_level", 9, 0, 9);

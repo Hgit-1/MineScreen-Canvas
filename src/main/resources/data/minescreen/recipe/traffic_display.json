@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": ["IRI", "TGT", "IRI"],
+  "key": {
+    "I": {"item": "minecraft:iron_ingot"},
+    "R": {"item": "minecraft:redstone"},
+    "T": {"item": "minescreen:text_display"},
+    "G": {"item": "minecraft:glowstone"}
+  },
+  "result": {"id": "minescreen:traffic_display", "count": 1}
+}

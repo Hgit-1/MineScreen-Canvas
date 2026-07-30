@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": ["GRG", "DTD", "GRG"],
+  "key": {
+    "G": {"item": "minecraft:glowstone_dust"},
+    "R": {"item": "minecraft:redstone"},
+    "D": {"item": "minecraft:redstone_torch"},
+    "T": {"item": "minescreen:text_display"}
+  },
+  "result": {"id": "minescreen:animated_text_display", "count": 1}
+}

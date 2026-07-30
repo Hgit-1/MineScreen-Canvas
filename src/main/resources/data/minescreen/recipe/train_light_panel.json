@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": ["GQG", "RLR", "GQG"],
+  "key": {
+    "G": {"item": "minecraft:glass_pane"},
+    "Q": {"item": "minecraft:quartz_block"},
+    "R": {"item": "minecraft:redstone"},
+    "L": {"item": "minecraft:sea_lantern"}
+  },
+  "result": {"id": "minescreen:train_light_panel", "count": 1}
+}

@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": ["GCG", "RTR", "GCG"],
+  "key": {
+    "G": {"item": "minecraft:glowstone_dust"},
+    "C": {"item": "minecraft:cyan_dye"},
+    "R": {"item": "minecraft:redstone"},
+    "T": {"item": "minescreen:animated_text_display"}
+  },
+  "result": {"id": "minescreen:electric_display", "count": 1}
+}

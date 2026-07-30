@@ -1,0 +1,6 @@
+{
+  "variants": {
+    "axis=z": {"model": "minescreen:block/ceiling_display"},
+    "axis=x": {"model": "minescreen:block/ceiling_display", "y": 90}
+  }
+}

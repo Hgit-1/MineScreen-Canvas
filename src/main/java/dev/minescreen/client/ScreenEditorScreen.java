@@ -32,7 +32,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
 
 /** Guided client-local editor opened with Shift + right-click on any tile in a joined group. */
-public final class ScreenEditorScreen extends Screen {
+public final class ScreenEditorScreen extends ResponsiveMineScreen {
     private static final int[] RESOLUTION_PRESETS = {100, 75, 50, 33, 25};
 
     private final ScreenGroup parentGroup;
@@ -104,10 +104,11 @@ public final class ScreenEditorScreen extends Screen {
 
     @Override
     protected void init() {
-        panelWidth = Math.min(760, width - 16);
-        panelHeight = Math.min(350, height - 12);
-        panelLeft = (width - panelWidth) / 2;
-        panelTop = (height - panelHeight) / 2;
+        configureResponsiveLayout(776, 362);
+        panelWidth = Math.min(760, layoutWidth() - 16);
+        panelHeight = Math.min(350, layoutHeight() - 12);
+        panelLeft = (layoutWidth() - panelWidth) / 2;
+        panelTop = (layoutHeight() - panelHeight) / 2;
         contentLeft = panelLeft + 14;
         contentWidth = panelWidth - 28;
         int innerLeft = contentLeft;
@@ -235,8 +236,9 @@ public final class ScreenEditorScreen extends Screen {
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         renderBackground(graphics, mouseX, mouseY, partialTick);
-        MineScreenUiRegistry.render(this, graphics, mouseX, mouseY, partialTick,
-                () -> renderMineScreenLayer(graphics, mouseX, mouseY, partialTick));
+        renderResponsive(graphics, mouseX, mouseY, partialTick,
+                (logicalX, logicalY, tick) ->
+                        renderMineScreenLayer(graphics, logicalX, logicalY, tick));
     }
 
     private void renderMineScreenLayer(GuiGraphics graphics, int mouseX, int mouseY,
@@ -342,13 +344,15 @@ public final class ScreenEditorScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        double logicalX = logicalMouseX(mouseX);
+        double logicalY = logicalMouseY(mouseY);
         if (profile.contentType == ScreenContentType.VIDEO && button == 0
-                && mouseY >= progressTop - 3 && mouseY <= progressTop + 10
-                && mouseX >= contentLeft && mouseX <= contentLeft + contentWidth) {
+                && logicalY >= progressTop - 3 && logicalY <= progressTop + 10
+                && logicalX >= contentLeft && logicalX <= contentLeft + contentWidth) {
             ScreenContentSession session = ScreenContentManager.session(parentGroup.groupId(), regionId);
             long duration = session == null ? 0L : session.durationMs();
             if (duration > 0L) {
-                long target = Math.round((mouseX - contentLeft)
+                long target = Math.round((logicalX - contentLeft)
                         / (double) contentWidth * duration);
                 profile.positionMs = target;
                 session.seek(target);

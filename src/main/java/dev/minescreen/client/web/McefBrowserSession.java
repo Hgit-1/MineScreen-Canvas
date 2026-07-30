@@ -37,7 +37,7 @@ public final class McefBrowserSession implements BrowserSession {
     private final ArrayDeque<String> pendingInitialTabs = new ArrayDeque<>();
     private final ClientScreenProfile profile;
     private final WebPeerSession peer;
-    private final ScreenGroup stateGroup;
+    private ScreenGroup stateGroup;
     private ScreenGroup group;
     private int activeTab = -1;
     private int splitWindowStart;
@@ -207,6 +207,13 @@ public final class McefBrowserSession implements BrowserSession {
             width = nextWidth;
             height = nextHeight;
             applyLayoutSizes();
+        }
+    }
+
+    @Override
+    public void setStateGroup(ScreenGroup group) {
+        if (group != null) {
+            stateGroup = group;
         }
     }
 

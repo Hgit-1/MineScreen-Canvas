@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": {"model": "minescreen:block/door_lcd"},
+    "facing=east": {"model": "minescreen:block/door_lcd", "y": 90},
+    "facing=south": {"model": "minescreen:block/door_lcd", "y": 180},
+    "facing=west": {"model": "minescreen:block/door_lcd", "y": 270}
+  }
+}

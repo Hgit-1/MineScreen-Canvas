@@ -1,0 +1,8 @@
+{
+  "parent": "minescreen:block/text_display_base",
+  "textures": {
+    "frame": "minescreen:block/controller_chassis",
+    "panel": "minescreen:block/controller_panel",
+    "accent": "minescreen:block/keyboard_accent"
+  }
+}

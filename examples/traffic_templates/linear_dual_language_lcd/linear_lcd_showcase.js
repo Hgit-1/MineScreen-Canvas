@@ -1,0 +1,1104 @@
+/*
+ * MineScreen linear dual-language carriage LCD example.
+ *
+ * The data and drawing code are original. The architecture is informed by the MIT-licensed
+ * TrainLCD project: a bounded visible station window, separate localized names, passed-station
+ * grayscale, station numbering, and dynamic name scaling. No TrainLCD component, font, artwork,
+ * operator logo, or railway database is bundled here.
+ */
+
+var LinearLcdDemo = (function () {
+    "use strict";
+
+    var PAPER = "#FFF2F3F4";
+    var INK = "#FF101214";
+    var MUTED = "#FFB7BABD";
+    var DARK = "#FF17191B";
+    var ACCENT = "#FFF07A00";
+    var ACCENT_DARK = "#FFB95400";
+    var SERVICE = "#FF086CA8";
+    var WHITE = "#FFFFFFFF";
+    var ARRIVAL_SKY = "#FFEAF6FC";
+    var ARRIVAL_RULE = "#FF9DB9C8";
+    var MAX_ARRIVAL_TRANSFERS = 10;
+
+    var DEFAULT_STYLE = {
+        paper: PAPER,
+        ink: INK,
+        muted: MUTED,
+        dark: DARK,
+        accent: ACCENT,
+        accentDark: ACCENT_DARK,
+        service: SERVICE,
+        carY: 0.035,
+        gameTimeY: 0.135,
+        etaY: 0.235,
+        routeY: 0.725,
+        stationTop: 0.340,
+        primaryStationSize: 0.80,
+        secondaryStationSize: 0.38,
+        transferTop: 0.815
+    };
+
+    var ROUTE = {
+        id: "minescreen_linear_demo",
+        symbol: "MS",
+        systemCode: "MS",
+        circular: false,
+        loopTravelMinutes: 2,
+        serviceOperations: [],
+        lineNames: {ja: "映界線", en: "MineScreen Line", zh: "映界线"},
+        serviceNames: {ja: "快速", en: "Rapid", zh: "快速"},
+        trainName: "测试车001",
+        destinationNames: {ja: "中央港", en: "Central Harbor", zh: "中央港"},
+        arrivalNotice: {
+            ja: "まもなく次の駅に到着します。お降りの準備をお願いします。",
+            en: "The train will stop at the next station. Please prepare to exit.",
+            zh: "列车即将到达下一站，请提前做好下车准备。"
+        },
+        carNumber: "7",
+        carriageCount: "10",
+        visibleStations: 8,
+        style: DEFAULT_STYLE,
+        stations: [
+            {code: "01", names: {ja: "北野", en: "Kitano", zh: "北野"},
+                travelMinutes: 0, transfers: [
+                    {symbol: "ML", color: "#FF7E57C2",
+                        names: {ja: "環状地下鉄", en: "Metro Loop", zh: "环线地铁"}}
+                ]},
+            {code: "02", names: {ja: "緑ヶ丘", en: "Midorigaoka", zh: "绿丘"},
+                travelMinutes: 2, transfers: []},
+            {code: "03", names: {ja: "学園前", en: "Gakuen-mae", zh: "学园前"},
+                travelMinutes: 2, transfers: [
+                    {symbol: "CP", color: "#FF2E9E5B",
+                        names: {ja: "都市公園線", en: "City Park Line", zh: "城市公园线"}}
+                ]},
+            {code: "04", names: {ja: "新都心", en: "Shin-toshin", zh: "新都心"},
+                travelMinutes: 3, transfers: [
+                    {symbol: "EX", color: "#FFD93030",
+                        stationCode: "A12", icon: "✈",
+                        names: {ja: "空港快速", en: "Airport Express", zh: "机场快线"}},
+                    {symbol: "ML", color: "#FF7E57C2", stationCode: "M09",
+                        names: {ja: "環状地下鉄", en: "Metro Loop", zh: "环线地铁"}}
+                ]},
+            {code: "05", names: {ja: "中央公園", en: "Central Park", zh: "中央公园"},
+                travelMinutes: 2, transfers: []},
+            {code: "06", names: {ja: "市役所前", en: "City Hall", zh: "市政府前"},
+                travelMinutes: 3, transfers: [
+                    {symbol: "CT", color: "#FF1688B8",
+                        names: {ja: "市電", en: "Civic Tram", zh: "市营电车"}}
+                ]},
+            {code: "07", names: {ja: "桜川", en: "Sakuragawa", zh: "樱川"},
+                travelMinutes: 3, transfers: []},
+            {code: "08", names: {ja: "港町", en: "Minatocho", zh: "港町"},
+                travelMinutes: 3, transfers: [
+                    {symbol: "HB", color: "#FF2477C9",
+                        names: {ja: "港支線", en: "Harbor Branch", zh: "港口支线"}}
+                ]},
+            {code: "09", names: {ja: "海浜公園", en: "Seaside Park", zh: "海滨公园"},
+                travelMinutes: 3, transfers: []},
+            {code: "10", names: {ja: "空港第2", en: "Airport Terminal 2", zh: "机场2号航站楼"},
+                travelMinutes: 4, transfers: [
+                    {symbol: "AP", color: "#FF00A0A8",
+                        names: {ja: "空港連絡線", en: "Airport Shuttle", zh: "机场联络线"}}
+                ]},
+            {code: "11", names: {ja: "空港第1", en: "Airport Terminal 1", zh: "机场1号航站楼"},
+                travelMinutes: 3, transfers: [
+                    {symbol: "AP", color: "#FF00A0A8",
+                        names: {ja: "空港連絡線", en: "Airport Shuttle", zh: "机场联络线"}}
+                ]},
+            {code: "12", names: {ja: "中央港", en: "Central Harbor", zh: "中央港"},
+                travelMinutes: 4, transfers: [
+                    {symbol: "F", color: "#FF405B73",
+                        names: {ja: "船客ターミナル", en: "Ferry Terminal", zh: "客运码头"}}
+                ]}
+        ]
+    };
+
+    function localized(values, language) {
+        if (!values) return "";
+        return values[language] || values.en || values.ja || values.zh || "";
+    }
+
+    function normalizedLanguage(language, fallback) {
+        return language === "ja" || language === "en" || language === "zh"
+            ? language : fallback;
+    }
+
+    function normalizedPage(page) {
+        return page === "next" || page === "arrival" ? page : "route";
+    }
+
+    var LANGUAGE_PROFILES = [
+        {id: "zh-en", primary: "zh", secondary: "en", label: "中文 / English"},
+        {id: "ja-en", primary: "ja", secondary: "en", label: "日本語 / English"},
+        {id: "zh-ja", primary: "zh", secondary: "ja", label: "中文 / 日本語"}
+    ];
+
+    function languageProfile(primary, secondary) {
+        var main = normalizedLanguage(primary, "zh");
+        var extra = normalizedLanguage(secondary, "en");
+        var match = LANGUAGE_PROFILES.find(function (profile) {
+            return profile.primary === main && profile.secondary === extra;
+        });
+        return match || LANGUAGE_PROFILES[0];
+    }
+
+    function routeForDirection(config, direction) {
+        if (!config || !config.directions || !config.directions[direction]) return config;
+        var selected = config.directions[direction];
+        if (!selected || !Array.isArray(selected.stations) || selected.stations.length < 2) {
+            return config;
+        }
+        var merged = Object.assign({}, config, selected);
+        merged.direction = direction;
+        merged.stations = selected.stations;
+        merged.lineNames = selected.lineNames || config.lineNames;
+        merged.destinationNames = selected.destinationNames || config.destinationNames;
+        return merged;
+    }
+
+    function finiteNumber(value, fallback, minimum, maximum) {
+        var number = Number(value);
+        if (!isFinite(number)) return fallback;
+        return Math.max(minimum, Math.min(maximum, number));
+    }
+
+    function resolvedStyle(config) {
+        var source = config && config.style ? config.style : {};
+        return {
+            paper: source.paper || DEFAULT_STYLE.paper,
+            ink: source.ink || DEFAULT_STYLE.ink,
+            muted: source.muted || DEFAULT_STYLE.muted,
+            dark: source.dark || DEFAULT_STYLE.dark,
+            accent: source.accent || DEFAULT_STYLE.accent,
+            accentDark: source.accentDark || DEFAULT_STYLE.accentDark,
+            service: source.service || DEFAULT_STYLE.service,
+            carY: finiteNumber(source.carY, DEFAULT_STYLE.carY, 0.0, 0.20),
+            gameTimeY: finiteNumber(source.gameTimeY, DEFAULT_STYLE.gameTimeY, 0.0, 0.28),
+            etaY: finiteNumber(source.etaY, DEFAULT_STYLE.etaY, 0.0, 0.29),
+            routeY: finiteNumber(source.routeY, DEFAULT_STYLE.routeY, 0.55, 0.88),
+            stationTop: finiteNumber(source.stationTop, DEFAULT_STYLE.stationTop, 0.30, 0.65),
+            primaryStationSize: finiteNumber(source.primaryStationSize,
+                DEFAULT_STYLE.primaryStationSize, 0.25, 1.40),
+            secondaryStationSize: finiteNumber(source.secondaryStationSize,
+                DEFAULT_STYLE.secondaryStationSize, 0.20, 0.90),
+            transferTop: finiteNumber(source.transferTop, DEFAULT_STYLE.transferTop, 0.72, 0.94)
+        };
+    }
+
+    function stationTravelMinutes(station) {
+        return Math.max(0, Number(station && station.travelMinutes) || 0);
+    }
+
+    function cumulativeMinutes(route, stationIndex) {
+        var total = 0;
+        var index;
+        for (index = 1; index <= stationIndex && index < route.length; index += 1) {
+            total += stationTravelMinutes(route[index]);
+        }
+        return total;
+    }
+
+    function segmentTravelMinutes(config, route, stationIndex) {
+        if (stationIndex === 0 && config.circular) {
+            return Math.max(0, Number(config.loopTravelMinutes) || 2);
+        }
+        return stationTravelMinutes(route[stationIndex]);
+    }
+
+    function forwardMinutes(config, route, currentIndex, targetIndex) {
+        if (!config.circular) {
+            return Math.max(0, cumulativeMinutes(route, targetIndex)
+                - cumulativeMinutes(route, currentIndex));
+        }
+        var total = 0;
+        var cursor = currentIndex;
+        var guard = 0;
+        while (cursor !== targetIndex && guard < route.length) {
+            cursor = (cursor + 1) % route.length;
+            total += segmentTravelMinutes(config, route, cursor);
+            guard += 1;
+        }
+        return total;
+    }
+
+    function etaText(minutes, language) {
+        if (language === "zh") return minutes + " 分钟";
+        if (language === "ja") return minutes + "分";
+        return minutes + " min";
+    }
+
+    function applyStyleColors(elements, style) {
+        var replacements = {};
+        replacements[PAPER] = style.paper;
+        replacements[INK] = style.ink;
+        replacements[MUTED] = style.muted;
+        replacements[DARK] = style.dark;
+        replacements[ACCENT] = style.accent;
+        replacements[ACCENT_DARK] = style.accentDark;
+        replacements[SERVICE] = style.service;
+        elements.forEach(function (element) {
+            if (element.color && replacements[element.color]) {
+                element.color = replacements[element.color];
+            }
+        });
+    }
+
+    function isCjk(language) {
+        return language === "ja" || language === "zh";
+    }
+
+    function textUnits(value) {
+        var text = String(value || "");
+        var units = 0;
+        var index;
+        for (index = 0; index < text.length; index += 1) {
+            units += text.charCodeAt(index) <= 0x7F ? 0.58 : 1.0;
+        }
+        return Math.max(1, units);
+    }
+
+    function fitHorizontal(value, preferred, maximumUnits) {
+        var units = textUnits(value);
+        return units <= maximumUnits ? preferred : Math.max(0.26,
+            preferred * maximumUnits / units);
+    }
+
+    function truncateUnits(value, maximumUnits) {
+        var text = String(value || "");
+        if (textUnits(text) <= maximumUnits) return text;
+        var result = "";
+        var units = 0;
+        var glyphs = Array.from(text);
+        var index;
+        for (index = 0; index < glyphs.length; index += 1) {
+            var next = glyphs[index].charCodeAt(0) <= 0x7F ? 0.58 : 1.0;
+            if (units + next > maximumUnits - 1.0) break;
+            result += glyphs[index];
+            units += next;
+        }
+        return result.replace(/[\s.,;:·•-]+$/g, "") + "…";
+    }
+
+    function fitVertical(value, preferred, maximumCharacters) {
+        var length = Math.max(1, String(value || "").length);
+        return length <= maximumCharacters ? preferred : Math.max(0.27,
+            preferred * maximumCharacters / length);
+    }
+
+    function addText(elements, x, y, size, color, value, align, rotation, vertical, bold,
+        maximumWidth) {
+        elements.push({
+            type: "text", x: x, y: y, size: size, color: color, text: value,
+            align: align || "left", rotation: rotation || 0, vertical: vertical === true,
+            bold: bold !== false, max_width: Number(maximumWidth) || 0
+        });
+    }
+
+    function addLine(elements, x1, y1, x2, y2, size, color) {
+        elements.push({type: "line", x: x1, y: y1, x2: x2, y2: y2,
+            size: size, color: color});
+    }
+
+    function addEllipse(elements, x, y, radiusX, radiusY, color) {
+        elements.push({type: "ellipse", x: x - radiusX, y: y - radiusY,
+            width: radiusX * 2, height: radiusY * 2, color: color});
+    }
+
+    function addRoundedRect(elements, centerX, centerY, width, height, radius, color) {
+        var x = centerX - width / 2;
+        var y = centerY - height / 2;
+        var radiusX = Math.max(0.001, Math.min(radius, width / 2));
+        var radiusY = Math.max(0.001, Math.min(radius * 16 / 9, height / 2));
+        elements.push({type: "rect", x: x + radiusX, y: y,
+            width: width - radiusX * 2, height: height, color: color});
+        elements.push({type: "rect", x: x, y: y + radiusY,
+            width: width, height: height - radiusY * 2, color: color});
+        addEllipse(elements, x + radiusX, y + radiusY, radiusX, radiusY, color);
+        addEllipse(elements, x + width - radiusX, y + radiusY, radiusX, radiusY, color);
+        addEllipse(elements, x + radiusX, y + height - radiusY, radiusX, radiusY, color);
+        addEllipse(elements, x + width - radiusX, y + height - radiusY, radiusX, radiusY, color);
+    }
+
+    function addChevron(elements, x, y, color) {
+        addLine(elements, x - 0.012, y - 0.018, x, y, 2.4, color);
+        addLine(elements, x, y, x - 0.012, y + 0.018, 2.4, color);
+    }
+
+    function visibleWindow(route, nextIndex, visibleCount, circular) {
+        var visible = Math.min(Math.max(3, Number(visibleCount) || 8), route.length);
+        if (circular) {
+            var circularResult = [];
+            var circularStart = nextIndex - 2;
+            var circularIndex;
+            for (circularIndex = 0; circularIndex < visible; circularIndex += 1) {
+                circularResult.push((circularStart + circularIndex + route.length) % route.length);
+            }
+            return circularResult;
+        }
+        var start = Math.max(0, Math.min(nextIndex - 2, route.length - visible));
+        var result = [];
+        var index;
+        for (index = start; index < start + visible; index += 1) result.push(index);
+        return result;
+    }
+
+    function badgePrefix(symbol, systemCode) {
+        var system = String(systemCode || "").trim().toUpperCase();
+        if (/^[A-Z]{1,3}[0-9]?$/.test(system)) return system;
+        return String(symbol || "R").trim().toUpperCase().substring(0, 4);
+    }
+
+    function badgeStationNumber(code, label) {
+        var value = String(code || "").trim().toUpperCase();
+        var prefix = String(label || "").trim().toUpperCase();
+        if (prefix && value.indexOf(prefix) === 0) value = value.substring(prefix.length);
+        if (/^\d$/.test(value)) return "0" + value;
+        return value.substring(0, 5);
+    }
+
+    function roundLineBadge(elements, x, y, symbol, code, ringColor, scale, systemCode) {
+        var factor = scale || 1;
+        var outerWidth = 0.058 * factor;
+        var outerHeight = 0.103 * factor;
+        var insetX = 0.0045 * factor;
+        var insetY = 0.0080 * factor;
+        addRoundedRect(elements, x, y, outerWidth, outerHeight, 0.0085 * factor,
+            ringColor || ACCENT_DARK);
+        addRoundedRect(elements, x, y, outerWidth - insetX * 2, outerHeight - insetY * 2,
+            0.0058 * factor, WHITE);
+        var label = badgePrefix(symbol, systemCode);
+        var stationNumber = badgeStationNumber(code, label);
+        if (stationNumber) {
+            // JR-style station numbering is always stacked: the line code is on the
+            // upper row and the station number is on the lower row (for example JY / 02).
+            // Never collapse these values into a horizontal "JY 02" label.
+            addText(elements, x, y - 0.034 * factor,
+                fitHorizontal(label, 0.27 * factor, 4.2), INK,
+                label, "center", 0, false, true);
+            addText(elements, x, y + 0.008 * factor, 0.32 * factor, INK,
+                stationNumber, "center", 0, false, true);
+        } else {
+            addText(elements, x, y - 0.017 * factor,
+                fitHorizontal(label, 0.38 * factor, 4.2), INK,
+                label, "center", 0, false, true);
+        }
+    }
+
+    function stationBadge(elements, x, y, station, config) {
+        roundLineBadge(elements, x, y, config.symbol, station.code, ACCENT_DARK, 1.15,
+            config.systemCode);
+    }
+
+    function carAndClock(elements, config, darkBackground, primaryLanguage) {
+        var style = resolvedStyle(config);
+        var carY = style.carY;
+        var foreground = darkBackground ? WHITE : INK;
+        var carLabel = primaryLanguage === "en" ? "Car ${carriage_number}"
+            : primaryLanguage === "zh" ? "${carriage_number}号车" : "${carriage_number}号車";
+        elements.push({type: "rect", x: 0.902, y: carY, width: 0.086, height: 0.052,
+            color: darkBackground ? "#FF303235" : "#FF252729"});
+        elements.push({type: "rect", x: 0.902, y: carY, width: 0.086, height: 0.005,
+            color: SERVICE});
+        addText(elements, 0.945, carY + 0.011,
+            fitHorizontal(carLabel, 0.46, 6.2), WHITE,
+            carLabel, "center", 0, false, true, 0.078);
+        addText(elements, 0.990, style.gameTimeY, 0.78, foreground,
+            "${game_time}", "right", 0, false, false, 0.12);
+        addText(elements, 0.990, style.etaY, 0.34,
+            darkBackground ? "#FFD7D9DB" : "#FF55585A",
+            primaryLanguage === "en" ? "ETA ${eta} · ${arrival_time}"
+                : primaryLanguage === "zh" ? "预计 ${arrival_time} · ${eta}"
+                    : "予定 ${arrival_time} · ${eta}",
+            "right", 0, false, false, 0.19);
+    }
+
+    function serviceBadge(elements, config, darkBackground, primaryLanguage, secondaryLanguage) {
+        elements.push({type: "rect", x: 0.014, y: 0.018, width: 0.182, height: 0.084,
+            color: SERVICE});
+        addText(elements, 0.105, 0.025, 0.92, WHITE,
+            "${service_type}", "center", 0, false, true, 0.17);
+        addText(elements, 0.105, 0.081, 0.29, WHITE,
+            "${train_name}", "center", 0, false, false, 0.17);
+    }
+
+    function directionBadge(elements, config, darkBackground, language) {
+        var label = "${direction}";
+        elements.push({type: "rect", x: 0.800, y: 0.035, width: 0.086, height: 0.050,
+            color: darkBackground ? "#FF303235" : "#FFE2E5E7"});
+        addText(elements, 0.843, 0.046, fitHorizontal(label, 0.34, 7.2),
+            darkBackground ? WHITE : INK, label, "center", 0, false, true, 0.078);
+    }
+
+    function routeHeader(elements, config, current, next, primaryLanguage, secondaryLanguage) {
+        var style = resolvedStyle(config);
+        elements.push({type: "rect", x: 0, y: 0, width: 1, height: 0.30, color: DARK});
+        serviceBadge(elements, config, true, primaryLanguage, secondaryLanguage);
+        directionBadge(elements, config, true, primaryLanguage);
+        var linePrimary = "${line}";
+        addText(elements, 0.025, 0.153, fitHorizontal(linePrimary, 0.96, 6.0), WHITE,
+            linePrimary, "left", 0, false, true, 0.205);
+        addText(elements, 0.026, 0.245, 0.36, "#FFD7D9DB",
+            "${line}", "left", 0, false, false, 0.205);
+        elements.push({type: "rect", x: 0.255, y: 0.045, width: 0.048, height: 0.255,
+            color: ACCENT});
+        roundLineBadge(elements, 0.365, 0.173, config.symbol, next.code,
+            style.accentDark, 1.65, config.systemCode);
+        if (config.lineIcon) {
+            addEllipse(elements, 0.326, 0.095, 0.014, 0.024, WHITE);
+            addText(elements, 0.326, 0.080, 0.25, style.accentDark,
+                config.lineIcon, "center", 0, false, true);
+        }
+        var destinationPrimary = "${destination}";
+        addText(elements, 0.438, 0.090,
+            fitHorizontal(destinationPrimary, 2.18, 8.5), WHITE,
+            destinationPrimary, "left", 0, false, true, 0.345);
+        var destinationSecondary = "${destination}";
+        addText(elements, 0.440, 0.205,
+            fitHorizontal(destinationSecondary, 0.50, 22),
+            "#FFD7D9DB", destinationSecondary,
+            "left", 0, false, false, 0.345);
+        addText(elements, 0.440, 0.255, 0.28, "#FFB8C6D1",
+            primaryLanguage === "en" ? "Next ${next}"
+                : primaryLanguage === "zh" ? "下一站 ${next}" : "次は ${next}",
+            "left", 0, false, false, 0.345);
+        carAndClock(elements, config, true, primaryLanguage);
+    }
+
+    function nextHeader(elements, config, current, next, primaryLanguage, secondaryLanguage) {
+        elements.push({type: "rect", x: 0, y: 0, width: 1, height: 0.30, color: PAPER});
+        serviceBadge(elements, config, false, primaryLanguage, secondaryLanguage);
+        directionBadge(elements, config, false, primaryLanguage);
+        addText(elements, 0.215, 0.020, 0.92, INK,
+            "${destination}",
+            "left", 0, false, true, 0.565);
+        addText(elements, 0.216, 0.095, 0.37, "#FF55585A",
+            "${destination}", "left", 0, false, false, 0.565);
+        addText(elements, 0.115, 0.177, 0.90, INK,
+            primaryLanguage === "en" ? "Next" : primaryLanguage === "zh" ? "下一站" : "次は",
+            "center", 0, false, true);
+        stationBadge(elements, 0.275, 0.205, next, config);
+        var nextPrimary = "${next}";
+        var nextSecondary = "${next}";
+        addText(elements, 0.445, 0.110,
+            fitHorizontal(nextPrimary, 2.55, 7.8), INK,
+            "${next}", "left", 0, false, true, 0.335);
+        addText(elements, 0.447, 0.244,
+            fitHorizontal(nextSecondary, 0.54, 23),
+            "#FF4B4E50", nextSecondary, "left", 0, false, false, 0.335);
+        carAndClock(elements, config, false, primaryLanguage);
+    }
+
+    function arrivalHeader(elements, config, current, next, primaryLanguage, secondaryLanguage) {
+        var style = resolvedStyle(config);
+        elements.push({type: "rect", x: 0, y: 0, width: 1, height: 0.32, color: PAPER});
+        serviceBadge(elements, config, false, primaryLanguage, secondaryLanguage);
+        directionBadge(elements, config, false, primaryLanguage);
+        var through = primaryLanguage === "en" ? "${line} · for ${destination}"
+            : primaryLanguage === "zh" ? "${line} · 开往 ${destination}"
+                : "${line}　${destination} ゆき";
+        through = truncateUnits(through, 42);
+        addText(elements, 0.215, 0.022, fitHorizontal(through, 0.45, 25), INK,
+            through, "left", 0, false, true, 0.565);
+        stationBadge(elements, 0.270, 0.205, next, config);
+        var arrivalPrimary = "${next}";
+        var arrivalSecondary = "${next}";
+        addText(elements, 0.375, 0.072,
+            fitHorizontal(arrivalPrimary, 2.22, 8.6), style.accentDark,
+            arrivalPrimary, "left", 0, false, true, 0.405);
+        addText(elements, 0.378, 0.205,
+            fitHorizontal(arrivalSecondary, 0.46, 24),
+            "#FF4B4E50", arrivalSecondary, "left", 0, false, false, 0.405);
+        addText(elements, 0.110, 0.247, 0.58, INK,
+            primaryLanguage === "en" ? "Next" : primaryLanguage === "zh" ? "下一站" : "つぎは",
+            "center", 0, false, true);
+        addText(elements, 0.500, 0.258, 0.42, INK,
+            primaryLanguage === "en" ? "Transfer" : primaryLanguage === "zh" ? "换乘" : "のりかえ",
+            "center", 0, false, true);
+        addText(elements, 0.565, 0.268, 0.31, "#FF55585A", " / Transfer",
+            "left", 0, false, false);
+        addLine(elements, 0.045, 0.315, 0.955, 0.315, 2.0, style.accentDark);
+        carAndClock(elements, config, false, primaryLanguage);
+    }
+
+    function arrivalBoard(elements, config, next, primaryLanguage, secondaryLanguage) {
+        var allTransfers = transferEntries(next, 64);
+        var transfers = allTransfers.slice(0, MAX_ARRIVAL_TRANSFERS);
+        elements.push({type: "rect", x: 0, y: 0.32, width: 1, height: 0.60,
+            color: ARRIVAL_SKY});
+        if (!transfers.length) {
+            addText(elements, 0.5, 0.545, 0.78, "#FF50636D",
+                primaryLanguage === "en" ? "No transfer information"
+                    : primaryLanguage === "zh" ? "本站暂无换乘信息" : "のりかえはありません",
+                "center", 0, false, true);
+        }
+        var columns = transfers.length > 5 ? 2 : 1;
+        var rows = Math.max(1, Math.ceil(transfers.length / columns));
+        var rowHeight = Math.min(0.112, 0.55 / rows);
+        transfers.forEach(function (transfer, index) {
+            var column = columns === 1 ? 0 : index % 2;
+            var row = columns === 1 ? index : Math.floor(index / 2);
+            var columnLeft = columns === 1 ? 0.105 : column === 0 ? 0.055 : 0.525;
+            var columnRight = columns === 1 ? 0.895 : column === 0 ? 0.485 : 0.955;
+            var rowTop = 0.342 + row * rowHeight;
+            var ring = argbColor(transfer.color, "#FF607D8B");
+            var lineSymbol = String(transfer.symbol || "T").substring(0, 4);
+            var lineNumber = String(transfer.stationCode || transfer.code
+                || transfer.number || transfer.lineNumber || "").substring(0, 5);
+            roundLineBadge(elements, columnLeft + 0.045, rowTop + rowHeight * 0.43,
+                lineSymbol, lineNumber, ring, 0.72, transfer.systemCode);
+            var lineNameX = columnLeft + 0.095;
+            if (transfer.icon) {
+                addText(elements, lineNameX, rowTop + 0.012, 0.28, ring,
+                    String(transfer.icon), "left", 0, false, true);
+                lineNameX += 0.022;
+            }
+            var linePrimary = truncateUnits(localized(transfer.names, primaryLanguage), 22);
+            var lineSecondary = truncateUnits(localized(transfer.names, secondaryLanguage), 36);
+            addText(elements, lineNameX, rowTop + 0.016,
+                fitHorizontal(linePrimary, columns === 1 ? 0.62 : 0.48,
+                    columns === 1 ? 25 : 16), INK,
+                linePrimary, "left", 0, false, true);
+            addText(elements, lineNameX + 0.001, rowTop + 0.082,
+                fitHorizontal(lineSecondary, 0.30, columns === 1 ? 42 : 26), "#FF344650",
+                lineSecondary, "left", 0, false, false);
+            if (row < rows - 1) addLine(elements, columnLeft, rowTop + rowHeight - 0.006,
+                columnRight, rowTop + rowHeight - 0.006, 0.55, ARRIVAL_RULE);
+        });
+        if (allTransfers.length > MAX_ARRIVAL_TRANSFERS) {
+            addText(elements, 0.970, 0.895, 0.26, "#FF50636D",
+                "+" + (allTransfers.length - MAX_ARRIVAL_TRANSFERS), "right", 0, false, true);
+        }
+        elements.push({type: "rect", x: 0, y: 0.92, width: 1, height: 0.08, color: WHITE});
+        var operation = serviceOperationFor(config, next);
+        var note = operation ? serviceOperationText(operation, primaryLanguage)
+            : localized(config.arrivalNotice, primaryLanguage)
+            || (primaryLanguage === "en" ? "The train will stop at the next station."
+                : primaryLanguage === "zh" ? "列车即将到达下一站，请提前做好下车准备。"
+                    : "まもなく次の駅に到着します。お降りの準備をお願いします。");
+        addText(elements, 0.030, 0.944, fitHorizontal(note, 0.38, 46), INK,
+            note, "left", 0, false, true);
+    }
+
+    function stationNames(elements, station, x, primaryLanguage, secondaryLanguage, color, style) {
+        var primary = truncateUnits(localized(station.names, primaryLanguage),
+            isCjk(primaryLanguage) ? 6 : 18);
+        var secondary = truncateUnits(localized(station.names, secondaryLanguage),
+            isCjk(secondaryLanguage) ? 8 : 20);
+        if (isCjk(primaryLanguage)) {
+            addText(elements, x - 0.007, style.stationTop,
+                fitVertical(primary, style.primaryStationSize, 5.5), color,
+                primary, "center", 0, true, true);
+        } else {
+            addText(elements, x - 0.006, style.stationTop + 0.195,
+                fitHorizontal(primary, style.primaryStationSize * 0.725, 11), color,
+                primary, "left", -54, false, true);
+        }
+        if (isCjk(secondaryLanguage)) {
+            addText(elements, x + 0.022, style.stationTop + 0.015,
+                fitVertical(secondary, style.secondaryStationSize, 7), color,
+                secondary, "center", 0, true, false);
+        } else {
+            addText(elements, x + 0.007, style.stationTop + 0.285,
+                fitHorizontal(secondary, style.secondaryStationSize * 0.895, 12), color,
+                secondary, "left", -54, false, false);
+        }
+    }
+
+    function argbColor(value, fallback) {
+        var color = String(value || "").trim();
+        if (/^#[0-9a-f]{6}$/i.test(color)) return "#FF" + color.substring(1);
+        if (/^#[0-9a-f]{8}$/i.test(color)) return color.toUpperCase();
+        return fallback;
+    }
+
+    function destinationLabel(config, language, primary) {
+        if (config.circular) {
+            var outer = config.direction === "down";
+            if (language === "en") return outer ? "Outer loop" : "Inner loop";
+            if (language === "zh") return outer ? "外环方向" : "内环方向";
+            return outer ? "外回り" : "内回り";
+        }
+        var destination = localized(config.destinationNames, language);
+        if (language === "en") return primary ? destination + " bound" : "for " + destination;
+        if (language === "zh") return primary ? destination + "方向" : "开往" + destination;
+        return primary ? destination + " 行" : destination + "方面";
+    }
+
+    function transferEntries(station, limit) {
+        if (!station.transfers || !station.transfers.length) return [];
+        return station.transfers.slice(0, limit || 2).map(function (transfer, index) {
+            if (typeof transfer === "string") {
+                return {symbol: "T" + (index + 1), color: "#FF607D8B",
+                    names: {ja: transfer, en: transfer, zh: transfer}};
+            }
+            return transfer;
+        });
+    }
+
+    function serviceOperationFor(config, station) {
+        if (station && station.operation && station.operation.type
+                && station.operation.type !== "none") return station.operation;
+        return (config.serviceOperations || []).find(function (operation) {
+            return operation && operation.type && operation.type !== "none"
+                && (operation.stationCode === station.code
+                    || operation.stationKey && operation.stationKey === station.key);
+        }) || null;
+    }
+
+    function serviceOperationText(operation, language) {
+        if (operation.notice && localized(operation.notice, language)) {
+            return localized(operation.notice, language);
+        }
+        var destination = localized(operation.destinationNames, language);
+        if (operation.type === "detach") {
+            if (language === "en") return "Some cars detach here" + (destination ? " for " + destination : "") + ".";
+            if (language === "zh") return "本站起部分车厢解挂" + (destination ? "，开往" + destination : "") + "。";
+            return "当駅で一部車両を切り離します" + (destination ? "（" + destination + "方面）" : "") + "。";
+        }
+        if (operation.type === "join") {
+            if (language === "en") return "Another train set couples here; service continues after joining.";
+            if (language === "zh") return "本站与另一编组重连，连挂完成后继续运行。";
+            return "当駅で別編成と連結し、連結後に運転を続けます。";
+        }
+        return language === "en" ? "Train formation changes at this station."
+            : language === "zh" ? "本站将进行列车编组调整。" : "当駅で編成を変更します。";
+    }
+
+    function drawTransfers(elements, station, x, language, color, passed, style) {
+        var transfers = transferEntries(station, 4);
+        transfers.forEach(function (transfer, index) {
+            var column = index % 2;
+            var row = Math.floor(index / 2);
+            var badgeX = Math.max(0.022, Math.min(0.978, x + (column ? 0.022 : -0.022)));
+            var y = style.transferTop + row * 0.050;
+            var iconColor = passed ? MUTED : argbColor(transfer.color, "#FF607D8B");
+            roundLineBadge(elements, badgeX, y + 0.020, transfer.symbol,
+                transfer.stationCode || "", iconColor, 0.50, transfer.systemCode);
+        });
+        if ((station.transfers || []).length > 4) addText(elements, x + 0.038,
+            style.transferTop + 0.094, 0.18, color,
+            "+" + ((station.transfers || []).length - 4), "center", 0, false, true);
+    }
+
+    function routeBoard(elements, config, route, nextIndex, currentIndex, primaryLanguage,
+            secondaryLanguage) {
+        var style = resolvedStyle(config);
+        var indexes = visibleWindow(route, nextIndex, config.visibleStations, config.circular);
+        var left = 0.065;
+        var right = 0.935;
+        var spacing = indexes.length <= 1 ? 0 : (right - left) / (indexes.length - 1);
+        var routeY = style.routeY;
+        var currentWindowIndex = indexes.indexOf(currentIndex);
+        var nextWindowIndex = indexes.indexOf(nextIndex);
+        var index;
+
+        var operation = serviceOperationFor(config, route[nextIndex]);
+        if (operation) {
+            elements.push({type: "rect", x: 0.030, y: 0.305, width: 0.940, height: 0.038,
+                color: "#FFFFE6A8"});
+            addText(elements, 0.500, 0.312, fitHorizontal(
+                serviceOperationText(operation, primaryLanguage), 0.31, 48), INK,
+                serviceOperationText(operation, primaryLanguage), "center", 0, false, true);
+        }
+
+        for (index = 0; index < indexes.length - 1; index += 1) {
+            var x1 = left + spacing * index;
+            var x2 = left + spacing * (index + 1);
+            var segmentColor = index < currentWindowIndex ? MUTED : ACCENT;
+            addLine(elements, x1, routeY, x2, routeY, 24.0, segmentColor);
+            addChevron(elements, (x1 + x2) * 0.5, routeY, WHITE);
+        }
+
+        for (index = 0; index < indexes.length; index += 1) {
+            var stationIndex = indexes[index];
+            var station = route[stationIndex];
+            var x = left + spacing * index;
+            var passed = index < currentWindowIndex;
+            var current = index === currentWindowIndex;
+            var next = index === nextWindowIndex;
+            var color = passed ? MUTED : INK;
+            var labelX = !isCjk(primaryLanguage) && index === indexes.length - 1
+                ? x - 0.035 : x;
+            stationNames(elements, station, labelX, primaryLanguage, secondaryLanguage, color,
+                style);
+
+            if (current) {
+                addEllipse(elements, x, routeY, 0.019, 0.034, WHITE);
+                addEllipse(elements, x, routeY, 0.014, 0.025, "#FFD7242A");
+            } else if (next) {
+                addEllipse(elements, x, routeY, 0.021, 0.038, ACCENT_DARK);
+                addEllipse(elements, x, routeY, 0.016, 0.029, WHITE);
+            } else {
+                addEllipse(elements, x, routeY, 0.015, 0.027, passed ? "#FFE2E3E4" : WHITE);
+            }
+
+            var relativeMinute = forwardMinutes(config, route, currentIndex, stationIndex);
+            addText(elements, x, routeY - 0.013, 0.42, next ? INK : color,
+                passed || current ? "" : String(relativeMinute),
+                "center", 0, false, true);
+            addText(elements, x, routeY + 0.041, 0.29, color,
+                config.symbol + "-" + station.code, "center", 0, false, true);
+            drawTransfers(elements, station, x, primaryLanguage, color, passed, style);
+        }
+
+        addText(elements, 0.985, 0.955, 0.24, "#FF55585A",
+            primaryLanguage === "en" ? "Times exclude waiting time."
+                : primaryLanguage === "zh" ? "所需时间不含候车时间。"
+                    : "所要時間は待ち時間を含みません。",
+            "right", 0, false, false);
+    }
+
+    function createTemplateFromRoute(routeConfig, nextIndex, primaryLanguage, secondaryLanguage,
+            page, direction) {
+        var config = routeConfig && (routeConfig.stations || routeConfig.directions)
+            ? routeConfig : ROUTE;
+        var rootConfig = config;
+        config = routeForDirection(config, direction || config.activeDirection || "up");
+        var route = config.stations;
+        if (!Array.isArray(route) || route.length < 2) {
+            throw new Error("LCD route requires at least two stations");
+        }
+        var profile = languageProfile(primaryLanguage, secondaryLanguage);
+        var primary = profile.primary;
+        var secondary = profile.secondary;
+        var safePage = normalizedPage(page);
+        var maximumSegment = config.circular ? route.length : route.length - 1;
+        var safeIndex = Math.max(1, Math.min(Number(nextIndex) || 1, maximumSegment));
+        var nextStationIndex = config.circular ? safeIndex % route.length : safeIndex;
+        var currentStationIndex = (nextStationIndex - 1 + route.length) % route.length;
+        var current = route[currentStationIndex];
+        var next = route[nextStationIndex];
+        var style = resolvedStyle(config);
+        var elements = [{type: "rect", x: 0, y: 0, width: 1, height: 1,
+            color: safePage === "arrival" ? ARRIVAL_SKY : PAPER}];
+        var header = [];
+        if (safePage === "next") {
+            nextHeader(header, config, current, next, primary, secondary);
+        } else if (safePage === "arrival") {
+            arrivalHeader(header, config, current, next, primary, secondary);
+        } else {
+            routeHeader(header, config, current, next, primary, secondary);
+        }
+        elements = elements.concat(header);
+        var board = [];
+        if (safePage === "arrival") {
+            arrivalBoard(board, config, next, primary, secondary);
+        } else {
+            routeBoard(board, config, route, nextStationIndex, currentStationIndex, primary,
+                secondary);
+        }
+        elements = elements.concat(board);
+        applyStyleColors(elements, style);
+
+        return {
+            id: "minescreen_linear_dual_language_lcd",
+            name: "MineScreen linear dual-language LCD",
+            layout: "script_scene_v1",
+            background_color: style.paper,
+            text_color: style.ink,
+            accent_color: style.accent,
+            elements: elements,
+            active_direction: config.direction || direction || rootConfig.activeDirection || "up",
+            language_profiles: LANGUAGE_PROFILES.map(function (item) {
+                return {id: item.id, primary: item.primary, secondary: item.secondary};
+            }),
+            directions: rootConfig.directions || {},
+            station_times: route.map(function (station, stationIndex) {
+                return {index: stationIndex, code: station.code,
+                    travel_minutes: stationTravelMinutes(station)};
+            }),
+            circular: config.circular === true,
+            loop_travel_minutes: config.circular ? segmentTravelMinutes(config, route, 0) : 0,
+            service_operations: (config.serviceOperations || []).concat(route.filter(function (station) {
+                return station.operation && station.operation.type
+                    && station.operation.type !== "none";
+            }).map(function (station) {
+                return Object.assign({stationCode: station.code, stationKey: station.key || ""},
+                    station.operation);
+            })),
+            arrival: {
+                enabled: true,
+                page: "arrival",
+                notice: config.arrivalNotice || ROUTE.arrivalNotice
+            },
+            coordinate_binding: rootConfig.coordinateBinding || null,
+            traffic: {
+                line: localized(config.lineNames, primary),
+                destination: localized(config.destinationNames, primary),
+                current: localized(current.names, primary),
+                next: localized(next.names, primary),
+                eta: etaText(segmentTravelMinutes(config, route, nextStationIndex), primary),
+                status: localized(next.names, secondary),
+                train_name: String(config.trainName || "测试车001"),
+                service_type: localized(config.serviceNames, primary),
+                carriage_number: String(config.carNumber || "7"),
+                carriage_count: String(config.carriageCount || "10"),
+                direction: destinationLabel(config, primary, true),
+                arrival_time: "12:41",
+                upcoming_stops: route.slice(nextStationIndex, nextStationIndex + 4)
+                    .map(function (station) {
+                        return localized(station.names, primary);
+                    }).join(" · ")
+            },
+            demo: {
+                primary_language: primary,
+                secondary_language: secondary,
+                page: safePage,
+                direction: config.direction || direction || routeConfig?.activeDirection || "up",
+                circular: config.circular === true,
+                language_profile: profile.id,
+                next_index: safeIndex,
+                next_secondary: localized(next.names, secondary),
+                relative_minutes: segmentTravelMinutes(config, route, nextStationIndex),
+                style: style,
+                route: config,
+                arrival: {
+                    enabled: true,
+                    notice: localized(config.arrivalNotice || ROUTE.arrivalNotice, primary)
+                }
+            }
+        };
+    }
+
+    function createTemplate(seed) {
+        var index = 1 + Math.abs(Number(seed) || 1) % (ROUTE.stations.length - 2);
+        return createTemplateFromRoute(ROUTE, index, "zh", "en", "route");
+    }
+
+    return {
+        route: ROUTE,
+        createTemplate: createTemplate,
+        createTemplateFromRoute: createTemplateFromRoute,
+        localized: localized
+    };
+}());
+
+/* MineScreen import entry: non-loop route with Chinese primary and English secondary labels. */
+function generate() {
+    return LinearLcdDemo.createTemplateFromRoute(LinearLcdDemo.route, 4, "zh", "en", "route");
+}
+
+if (typeof module === "object" && module && module.exports) {
+    module.exports = LinearLcdDemo;
+}
+
+/* Browser runtime for linear_lcd_showcase.js. The build step prepends the declarative generator. */
+(function (root) {
+    "use strict";
+
+    function mount(target, options) {
+        options = options || {};
+        var element = typeof target === "string" ? document.querySelector(target) : target;
+        if (!element) throw new Error("MineScreenLinearLcd.mount target was not found");
+        if (!root.LinearLcdDemo) throw new Error("linear_lcd_generator.js is missing from the bundle");
+        var route = options.route || root.LinearLcdDemo.route;
+        var direction = options.direction === "down" ? "down" : options.direction === "up" ? "up" : (route.activeDirection || "up");
+        var profiles = [
+            {id: "zh-en", primary: "zh", secondary: "en"},
+            {id: "ja-en", primary: "ja", secondary: "en"},
+            {id: "zh-ja", primary: "zh", secondary: "ja"}
+        ];
+        var profile = profiles.find(function (item) { return item.id === options.profile; }) || profiles[0];
+        var primary = profile.primary;
+        var secondary = profile.secondary;
+        var pageMode = options.page === "route" || options.page === "next" || options.page === "arrival" ? options.page : "auto";
+        var visiblePage = pageMode === "next" || pageMode === "arrival" ? pageMode : "route";
+        var index = Math.max(1, Math.min(Number(options.index) || 1, segmentCount()));
+        var interval = Math.max(2_000, Number(options.interval) || 9_000);
+        var playing = options.autoplay !== false;
+        var languageCycle = options.languageCycle === true;
+        var languageInterval = Math.max(2_000, Number(options.languageInterval) || 8_000);
+        var languageTimer = null;
+        var timer = null;
+        var clockTimer = null;
+        var stage = document.createElement("div");
+        var canvas = document.createElement("canvas");
+        var motionCanvas = document.createElement("canvas");
+        var context = canvas.getContext("2d");
+        var motionContext = motionCanvas.getContext("2d");
+        canvas.width = 1920;
+        canvas.height = 1080;
+        stage.style.cssText = "position:relative;width:100%;aspect-ratio:16/9;background:#050708;overflow:hidden;border-radius:10px;";
+        canvas.style.cssText = "position:absolute;inset:0;display:block;width:100%;height:100%;";
+        motionCanvas.width = canvas.width;
+        motionCanvas.height = canvas.height;
+        motionCanvas.style.cssText = "position:absolute;inset:0;display:block;width:100%;height:100%;pointer-events:none;opacity:0;";
+        stage.appendChild(canvas);
+        stage.appendChild(motionCanvas);
+        element.appendChild(stage);
+
+        var status;
+        var toolbar;
+        if (options.controls) {
+            toolbar = document.createElement("div");
+            toolbar.style.cssText = "position:absolute;left:12px;right:12px;bottom:12px;display:flex;gap:7px;align-items:center;padding:8px;border:1px solid #ffffff24;border-radius:11px;background:#081014dd;backdrop-filter:blur(10px);font:13px 'Microsoft YaHei UI','Segoe UI',sans-serif;color:#eef4f6;z-index:2;";
+            toolbar.innerHTML = "<button data-ms-prev aria-label='上一站'>←</button><button data-ms-pause>暂停</button>" +
+                "<button data-ms-next aria-label='下一站'>→</button><button data-ms-page>切换版面</button>" +
+                "<span data-ms-status style='margin-left:auto;color:#d5e3e8;white-space:nowrap'></span>";
+            Array.prototype.forEach.call(toolbar.querySelectorAll("button"), function (button) {
+                button.style.cssText = "min-height:32px;min-width:34px;padding:5px 10px;border:1px solid #ffffff2c;border-radius:7px;background:#21313a;color:#eef4f6;font:inherit;cursor:pointer;transition:background .15s ease,border-color .15s ease;";
+                button.addEventListener("mouseenter", function () { button.style.background = "#304650"; button.style.borderColor = "#ff9b42"; });
+                button.addEventListener("mouseleave", function () { button.style.background = "#21313a"; button.style.borderColor = "#ffffff2c"; });
+            });
+            stage.appendChild(toolbar);
+            status = toolbar.querySelector("[data-ms-status]");
+            toolbar.querySelector("[data-ms-prev]").onclick = function () { api.previous(); };
+            toolbar.querySelector("[data-ms-next]").onclick = function () { api.next(); };
+            toolbar.querySelector("[data-ms-pause]").onclick = function () {
+                playing ? api.pause() : api.play();
+            };
+            toolbar.querySelector("[data-ms-page]").onclick = function () { api.setPage(); };
+        }
+
+        function selectedRoute() {
+            var selected = route.directions && route.directions[direction];
+            return selected && Array.isArray(selected.stations) && selected.stations.length > 1
+                ? selected : route;
+        }
+        function stationCount() {
+            return selectedRoute().stations.length;
+        }
+        function segmentCount() {
+            return selectedRoute().circular === true || route.circular === true
+                ? stationCount() : Math.max(1, stationCount() - 1);
+        }
+
+        function clockText() {
+            if (typeof options.gameTimeProvider === "function") return options.gameTimeProvider();
+            var now = new Date();
+            return String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
+        }
+        function cssColor(value) {
+            var color = String(value || "#FFFFFFFF");
+            return /^#[0-9a-f]{8}$/i.test(color) ? "#" + color.slice(3) + color.slice(1, 3) : color;
+        }
+        function animateArrival() {
+            if (!motionCanvas.animate || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+            motionContext.clearRect(0, 0, motionCanvas.width, motionCanvas.height);
+            motionContext.drawImage(canvas, 0, 0);
+            motionCanvas.animate([
+                {opacity: 0.82, clipPath: "inset(18% 0 0 0)", transform: "translateX(22px)", filter: "blur(1.2px)"},
+                {opacity: 0, clipPath: "inset(18% 0 0 0)", transform: "translateX(-8px)", filter: "blur(0)"}
+            ], {duration: 520, easing: "cubic-bezier(.22,.72,.22,1)"});
+        }
+        function render(animate) {
+            if (animate) animateArrival();
+            var template = root.LinearLcdDemo.createTemplateFromRoute(route, index, primary,
+                secondary, visiblePage, direction);
+            var state = template.traffic || {};
+            var width = canvas.width;
+            var height = canvas.height;
+            context.clearRect(0, 0, width, height);
+            context.textBaseline = "top";
+            context.lineCap = "round";
+            context.lineJoin = "round";
+            template.elements.forEach(function (scene) {
+                context.fillStyle = cssColor(scene.color);
+                context.strokeStyle = cssColor(scene.color);
+                if (scene.type === "rect") {
+                    context.fillRect(scene.x * width, scene.y * height,
+                        scene.width * width, scene.height * height);
+                } else if (scene.type === "ellipse") {
+                    context.beginPath();
+                    context.ellipse((scene.x + scene.width / 2) * width,
+                        (scene.y + scene.height / 2) * height,
+                        scene.width * width / 2, scene.height * height / 2, 0, 0, Math.PI * 2);
+                    context.fill();
+                } else if (scene.type === "line") {
+                    context.lineWidth = Math.max(1, (Number(scene.size) || 1) * height / 360);
+                    context.beginPath();
+                    context.moveTo(scene.x * width, scene.y * height);
+                    context.lineTo(scene.x2 * width, scene.y2 * height);
+                    context.stroke();
+                } else if (scene.type === "text") {
+                    var size = Math.max(11, (Number(scene.size) || 1) * height / 20);
+                    context.font = (scene.bold ? "700 " : "500 ") + size +
+                        "px \"Microsoft YaHei UI\", \"Noto Sans CJK SC\", \"Yu Gothic UI\", sans-serif";
+                    context.save();
+                    context.translate(scene.x * width, scene.y * height);
+                    context.rotate((Number(scene.rotation) || 0) * Math.PI / 180);
+                    context.textAlign = scene.align || "left";
+                    var value = String(scene.text || "").replace(
+                        /\$\{(line|destination|current|next|eta|status|game_time|train_name|service_type|carriage_number|carriage_count|upcoming_stops|direction|arrival_time)\}/g,
+                        function (match, key) { return key === "game_time" ? clockText() : state[key] || ""; });
+                    if (scene.vertical) {
+                        Array.from(value).slice(0, 32).forEach(function (glyph, glyphIndex) {
+                            context.fillText(glyph, 0, glyphIndex * size * 1.02);
+                        });
+                    } else {
+                        var available = scene.align === "right" ? scene.x : scene.align === "center" ? Math.min(scene.x, 1 - scene.x) * 2 : 1 - scene.x;
+                        context.fillText(value, 0, 0, Math.max(size * 2, available * width * 0.96));
+                    }
+                    context.restore();
+                }
+            });
+            if (status) status.textContent = route.lineNames[primary] + " · " + index + "/" +
+                segmentCount() + " · " + (playing ? "运行中" : "已暂停");
+        }
+        function rotateLanguage() {
+            if (!languageCycle) return;
+            profile = profiles[(profiles.indexOf(profile) + 1) % profiles.length];
+            primary = profile.primary;
+            secondary = profile.secondary;
+            render(true);
+        }
+        function schedule() {
+            clearTimeout(timer);
+            if (!playing) return;
+            timer = setTimeout(function () {
+                if (pageMode === "auto" && visiblePage === "route") {
+                    visiblePage = "next";
+                } else if (pageMode === "auto" && visiblePage === "next") {
+                    visiblePage = "arrival";
+                } else {
+                    index = index >= segmentCount() ? 1 : index + 1;
+                    if (pageMode === "auto") visiblePage = "route";
+                }
+                render(true);
+                schedule();
+            }, pageMode === "auto" ? interval * (visiblePage === "route" ? 0.45
+                    : visiblePage === "next" ? 0.30 : 0.25) : interval);
+        }
+        var api = {
+            canvas: canvas,
+            render: render,
+            next: function () { index = index >= segmentCount() ? 1 : index + 1; render(true); schedule(); },
+            previous: function () { index = index <= 1 ? segmentCount() : index - 1; render(true); schedule(); },
+            play: function () { playing = true; render(true); schedule(); },
+            pause: function () { playing = false; clearTimeout(timer); render(true); },
+            setPage: function (page) {
+                visiblePage = page === "next" ? "next"
+                    : page === "arrival" ? "arrival"
+                    : page === "route" ? "route" : visiblePage === "route" ? "next" : visiblePage === "next" ? "arrival" : "route";
+                render(true); schedule();
+            },
+            setIndex: function (value) { index = Math.max(1, Math.min(Number(value) || 1, segmentCount())); render(true); schedule(); },
+            setLanguages: function (main, extra) {
+                profile = profiles.find(function (item) { return item.primary === main && item.secondary === extra; }) || profiles[0];
+                primary = profile.primary; secondary = profile.secondary; render(true);
+            },
+            setLanguageProfile: function (id) {
+                profile = profiles.find(function (item) { return item.id === id; }) || profile;
+                primary = profile.primary; secondary = profile.secondary; render(true);
+            },
+            setDirection: function (value) {
+                direction = value === "down" ? "down" : "up";
+                index = Math.max(1, Math.min(index, segmentCount()));
+                render(true); schedule();
+            },
+            destroy: function () {
+                clearTimeout(timer); clearInterval(clockTimer); clearInterval(languageTimer);
+                if (stage.parentNode === element) element.removeChild(stage);
+            }
+        };
+        clockTimer = setInterval(render, 1_000);
+        if (languageCycle) languageTimer = setInterval(rotateLanguage, languageInterval);
+        render();
+        schedule();
+        return api;
+    }
+
+    root.MineScreenLinearLcd = {mount: mount};
+}(typeof window === "undefined" ? this : window));

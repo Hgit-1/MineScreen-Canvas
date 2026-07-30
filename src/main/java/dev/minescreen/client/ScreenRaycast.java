@@ -8,6 +8,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
@@ -79,6 +80,24 @@ public final class ScreenRaycast {
                 nearestDistance = hit.distance();
             }
         }
+        Vec3 worldEnd = start.add(direction.scale(MAX_DISTANCE));
+        for (ScreenGroup group : ScreenContentManager.movingGroups()) {
+            Level virtualLevel = MovingScreenSpatialState.virtualLevel(group);
+            Vec3 localStart = MovingScreenSpatialState.toLocal(group, start);
+            Vec3 localEnd = MovingScreenSpatialState.toLocal(group, worldEnd);
+            if (virtualLevel == null || localStart == null || localEnd == null) {
+                continue;
+            }
+            Vec3 localDelta = localEnd.subtract(localStart);
+            if (localDelta.lengthSqr() < 1.0E-9D) {
+                continue;
+            }
+            ScreenHit hit = intersect(virtualLevel, group, localStart, localDelta.normalize());
+            if (hit != null && hit.distance() < nearestDistance) {
+                nearest = hit;
+                nearestDistance = hit.distance();
+            }
+        }
         return nearest;
     }
 
@@ -88,11 +107,13 @@ public final class ScreenRaycast {
     }
 
     @Nullable
-    private static ScreenHit intersect(ClientLevel level, ScreenGroup group, Vec3 rayStart,
+    private static ScreenHit intersect(Level level, ScreenGroup group, Vec3 rayStart,
             Vec3 rayDirection) {
         Vec3 normal = ScreenGeometry.normal(group.facing());
         double denominator = rayDirection.dot(normal);
-        if (Math.abs(denominator) < 1.0E-6D) {
+        // Normal media screens remain intentionally single-sided. Text/traffic boards have their
+        // own double-sided renderer and editor path.
+        if (denominator >= -1.0E-6D) {
             return null;
         }
 
@@ -111,10 +132,12 @@ public final class ScreenRaycast {
         if (u < 0.0D || u > 1.0D || v < 0.0D || v > 1.0D) {
             return null;
         }
+        ClientScreenProfile profile = ScreenContentManager.profile(group.groupId());
         int regionId = 0;
         double regionU = u;
         double regionV = v;
-        ScreenHostNetworkManager.HostNetwork host = ScreenHostNetworkManager.networkFor(group);
+        ScreenHostNetworkManager.HostNetwork host = level instanceof ClientLevel
+                ? ScreenHostNetworkManager.networkFor(group) : null;
         boolean joinedCanvas = host != null && host.panoramic();
         if (group.legacyAnchor()) {
             if (!ScreenTileIndex.isLive(level, group.master(), group.facing())) {
@@ -127,7 +150,6 @@ public final class ScreenRaycast {
             BlockPos tile = group.origin()
                     .relative(ScreenGeometry.rightDirection(group.facing()), column)
                     .relative(ScreenGeometry.upDirection(group.facing()), row);
-            ClientScreenProfile profile = ScreenContentManager.profile(group.groupId());
             if (!group.tiles().contains(tile)
                     || !ScreenTileIndex.isLive(level, tile, group.facing())
                     || profile.disabledTiles.contains(tile.asLong())) {

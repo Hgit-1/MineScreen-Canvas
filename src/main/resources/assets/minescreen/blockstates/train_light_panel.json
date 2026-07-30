@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "facing=north": {"model": "minescreen:block/train_light_panel"},
+    "facing=east": {"model": "minescreen:block/train_light_panel", "y": 90},
+    "facing=south": {"model": "minescreen:block/train_light_panel", "y": 180},
+    "facing=west": {"model": "minescreen:block/train_light_panel", "y": 270},
+    "facing=up": {"model": "minescreen:block/train_light_panel", "x": 90},
+    "facing=down": {"model": "minescreen:block/train_light_panel", "x": 270}
+  }
+}

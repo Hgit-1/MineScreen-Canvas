@@ -7,3 +7,10 @@ repo/
 .idea/
 *.log
 hs_err_pid*.log
+.qa-*
+qa-*.png
+tmp/
+dist/
+# Local concept/source artwork; final optimized item textures live under src/main/resources.
+art_concepts/
+item_icon_work/

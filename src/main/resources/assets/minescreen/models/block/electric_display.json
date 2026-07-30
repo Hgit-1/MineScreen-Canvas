@@ -1,0 +1,8 @@
+{
+  "parent": "minescreen:block/text_display_base",
+  "textures": {
+    "frame": "minecraft:block/iron_block",
+    "panel": "minecraft:block/black_concrete",
+    "accent": "minecraft:block/sea_lantern"
+  }
+}

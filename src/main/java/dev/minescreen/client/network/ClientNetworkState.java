@@ -185,6 +185,8 @@ public final class ClientNetworkState {
     @SubscribeEvent
     public static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
         dev.minescreen.client.web.WebPeerService.shutdown();
+        dev.minescreen.client.traffic.ClientTrainScheduleState.clear();
+        dev.minescreen.client.compat.ClientCarriageTrainState.clear();
         STATES.clear();
         lastDimension = null;
     }

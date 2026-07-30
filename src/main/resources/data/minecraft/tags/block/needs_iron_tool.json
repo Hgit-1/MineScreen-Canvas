@@ -3,6 +3,14 @@
   "values": [
     "minescreen:screen",
     "minescreen:computer",
-    "minescreen:speaker"
+    "minescreen:speaker",
+    "minescreen:text_display",
+    "minescreen:animated_text_display",
+    "minescreen:traffic_display",
+    "minescreen:electric_display",
+    "minescreen:ceiling_display",
+    "minescreen:door_lcd",
+    "minescreen:train_light_panel",
+    "minescreen:carriage_info_display"
   ]
 }

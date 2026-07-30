@@ -37,7 +37,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 
 /** Enlarged host console with info, content, and live mouse-enabled preview tabs. */
-public final class ComputerScreen extends Screen {
+public final class ComputerScreen extends ResponsiveMineScreen {
     private static final int[] RESOLUTIONS = {100, 75, 50, 33, 25};
     private static final int MAX_TILE_PAGE_COLUMNS = 16;
     private static final int MAX_TILE_PAGE_ROWS = 8;
@@ -128,16 +128,17 @@ public final class ComputerScreen extends Screen {
 
     @Override
     protected void init() {
+        configureResponsiveLayout(772, 442);
         captureContentDraft();
         resolveHostNetwork();
         tileButtons.clear();
         tilePagePreviousButton = null;
         tilePageLabelButton = null;
         tilePageNextButton = null;
-        panelWidth = Math.min(760, width - 12);
-        panelHeight = Math.min(430, height - 12);
-        panelLeft = (width - panelWidth) / 2;
-        panelTop = (height - panelHeight) / 2;
+        panelWidth = Math.min(760, layoutWidth() - 12);
+        panelHeight = Math.min(430, layoutHeight() - 12);
+        panelLeft = (layoutWidth() - panelWidth) / 2;
+        panelTop = (layoutHeight() - panelHeight) / 2;
         addRenderableWidget(MineScreenButton.create(Component.literal("×"), button -> onClose(),
                 panelLeft + 7, panelTop + 7, 20, 20));
         int tabLeft = panelLeft + 10;
@@ -352,8 +353,9 @@ public final class ComputerScreen extends Screen {
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         renderBackground(graphics, mouseX, mouseY, partialTick);
-        MineScreenUiRegistry.render(this, graphics, mouseX, mouseY, partialTick,
-                () -> renderMineScreenLayer(graphics, mouseX, mouseY, partialTick));
+        renderResponsive(graphics, mouseX, mouseY, partialTick,
+                (logicalX, logicalY, tick) ->
+                        renderMineScreenLayer(graphics, logicalX, logicalY, tick));
     }
 
     private void renderMineScreenLayer(GuiGraphics graphics, int mouseX, int mouseY,
@@ -479,8 +481,10 @@ public final class ComputerScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (tab == HostTab.PREVIEW && insidePreview(mouseX, mouseY)) {
-            PreviewPointer pointer = previewPointer(mouseX, mouseY);
+        double logicalX = logicalMouseX(mouseX);
+        double logicalY = logicalMouseY(mouseY);
+        if (tab == HostTab.PREVIEW && insidePreview(logicalX, logicalY)) {
+            PreviewPointer pointer = previewPointer(logicalX, logicalY);
             if (pointer != null) {
                 focusPreviewKeyboard(pointer.target(), pointer.groupId(), pointer.regionId());
                 pointer.target().mouseMove(pointer.x(), pointer.y());
@@ -499,8 +503,10 @@ public final class ComputerScreen extends Screen {
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        double logicalX = logicalMouseX(mouseX);
+        double logicalY = logicalMouseY(mouseY);
         if (previewTarget != null && pressedPreviewButton == button) {
-            PreviewPointer pointer = previewPointer(mouseX, mouseY);
+            PreviewPointer pointer = previewPointer(logicalX, logicalY);
             int x = pointer != null && pointer.target() == previewTarget
                     ? pointer.x() : previewPointerX;
             int y = pointer != null && pointer.target() == previewTarget
@@ -515,8 +521,10 @@ public final class ComputerScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double deltaX, double deltaY) {
-        if (tab == HostTab.PREVIEW && insidePreview(mouseX, mouseY)) {
-            PreviewPointer pointer = previewPointer(mouseX, mouseY);
+        double logicalX = logicalMouseX(mouseX);
+        double logicalY = logicalMouseY(mouseY);
+        if (tab == HostTab.PREVIEW && insidePreview(logicalX, logicalY)) {
+            PreviewPointer pointer = previewPointer(logicalX, logicalY);
             if (pointer != null) {
                 pointer.target().mouseWheel(pointer.x(), pointer.y(), deltaY, 0);
                 return true;

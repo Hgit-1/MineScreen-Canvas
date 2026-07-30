@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": ["IGI", "STS", "IRI"],
+  "key": {
+    "I": {"item": "minecraft:iron_ingot"},
+    "G": {"item": "minecraft:glass_pane"},
+    "S": {"item": "minescreen:screen"},
+    "T": {"item": "minescreen:traffic_display"},
+    "R": {"item": "minecraft:redstone"}
+  },
+  "result": {"id": "minescreen:door_lcd", "count": 1}
+}

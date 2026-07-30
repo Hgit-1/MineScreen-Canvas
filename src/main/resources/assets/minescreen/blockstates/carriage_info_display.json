@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": {"model": "minescreen:block/carriage_info_display"},
+    "facing=east": {"model": "minescreen:block/carriage_info_display", "y": 90},
+    "facing=south": {"model": "minescreen:block/carriage_info_display", "y": 180},
+    "facing=west": {"model": "minescreen:block/carriage_info_display", "y": 270}
+  }
+}

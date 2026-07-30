@@ -18,11 +18,15 @@ public final class ScreenVisibility {
         }
         Minecraft minecraft = Minecraft.getInstance();
         Entity camera = minecraft.getCameraEntity();
-        if (minecraft.level == null || camera == null || minecraft.level.dimension() != group.dimension()) {
+        net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> dimension =
+                MovingScreenSpatialState.dimension(group);
+        if (minecraft.level == null || camera == null
+                || !minecraft.level.dimension().equals(dimension)) {
             return new State(false, false, true);
         }
         Vec3 eye = camera.getEyePosition(1.0F);
-        Vec3 toCenter = group.bounds().getCenter().subtract(eye);
+        AABB bounds = MovingScreenSpatialState.bounds(group);
+        Vec3 toCenter = bounds.getCenter().subtract(eye);
         double distanceSquared = toCenter.lengthSqr();
         double maxDistance = MineScreenConfig.MAX_RENDER_DISTANCE.get();
         boolean inRange = distanceSquared <= maxDistance * maxDistance;
@@ -30,7 +34,6 @@ public final class ScreenVisibility {
             return new State(false, false, true);
         }
 
-        AABB bounds = group.bounds();
         double radius = Math.sqrt(bounds.getXsize() * bounds.getXsize()
                 + bounds.getYsize() * bounds.getYsize() + bounds.getZsize() * bounds.getZsize()) * 0.5D;
         double distance = Math.sqrt(distanceSquared);

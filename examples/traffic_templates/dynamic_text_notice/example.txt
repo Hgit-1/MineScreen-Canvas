@@ -1,0 +1,26 @@
+@title=MineScreen 动态交通公告
+@loop=true
+@default_duration=4s
+@default_transition=fade
+@default_align=center
+@position=bottom
+@background_color=#D908131F
+@text_color=#FFFFFFFF
+@accent_color=#4AA8FF
+欢迎乘坐本次列车
+Welcome aboard
+---
+@duration=3s
+@transition=slide_left
+下一站：中央港
+Next stop: Central Harbor
+---
+@duration=5s
+@transition=typewriter
+请站稳扶好，注意车门
+Please hold the handrail and mind the doors
+---
+@duration=2s
+@transition=blink
+列车即将到站
+Arriving shortly

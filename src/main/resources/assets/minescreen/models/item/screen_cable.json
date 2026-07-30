@@ -1,1 +1,6 @@
-{"parent": "minescreen:block/screen_cable"}
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "minescreen:item/screen_cable"
+  }
+}

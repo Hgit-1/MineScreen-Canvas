@@ -1,0 +1,9 @@
+{
+  "parent": "minescreen:block/screen",
+  "textures": {
+    "face": "minecraft:block/white_concrete",
+    "edge": "minecraft:block/iron_block",
+    "back": "minecraft:block/smooth_stone",
+    "particle": "minecraft:block/white_concrete"
+  }
+}

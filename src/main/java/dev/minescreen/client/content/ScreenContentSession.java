@@ -13,6 +13,10 @@ public interface ScreenContentSession extends AutoCloseable {
     default void resize(ScreenGroup group) {
     }
 
+    /** Updates the physical surface used for audio/identity without rebuilding visual content. */
+    default void setStateGroup(ScreenGroup group) {
+    }
+
     default long positionMs() {
         return 0L;
     }

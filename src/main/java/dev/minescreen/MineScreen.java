@@ -50,6 +50,39 @@ public final class MineScreen {
     public static final DeferredHolder<Block, ComputerBlock> COMPUTER_BLOCK = BLOCKS.register(
             "computer", () -> new ComputerBlock(BlockBehaviour.Properties.of()
                     .mapColor(MapColor.METAL).strength(3.0F).requiresCorrectToolForDrops().noOcclusion()));
+    public static final DeferredHolder<Block, TextDisplayBlock> TEXT_DISPLAY_BLOCK = BLOCKS.register(
+            "text_display", () -> new TextDisplayBlock(BlockBehaviour.Properties.of()
+                    .mapColor(MapColor.METAL).strength(1.8F).requiresCorrectToolForDrops()
+                    .noOcclusion()));
+    public static final DeferredHolder<Block, TextDisplayBlock> ANIMATED_TEXT_DISPLAY_BLOCK = BLOCKS.register(
+            "animated_text_display", () -> new TextDisplayBlock(BlockBehaviour.Properties.of()
+                    .mapColor(MapColor.METAL).strength(1.8F).requiresCorrectToolForDrops()
+                    .noOcclusion()));
+    public static final DeferredHolder<Block, TextDisplayBlock> TRAFFIC_DISPLAY_BLOCK = BLOCKS.register(
+            "traffic_display", () -> new TextDisplayBlock(BlockBehaviour.Properties.of()
+                    .mapColor(MapColor.COLOR_ORANGE).strength(1.8F).requiresCorrectToolForDrops()
+                    .noOcclusion()));
+    public static final DeferredHolder<Block, TextDisplayBlock> ELECTRIC_DISPLAY_BLOCK = BLOCKS.register(
+            "electric_display", () -> new TextDisplayBlock(BlockBehaviour.Properties.of()
+                    .mapColor(MapColor.COLOR_LIGHT_BLUE).strength(1.8F).requiresCorrectToolForDrops()
+                    .lightLevel(state -> 10).noOcclusion()));
+    public static final DeferredHolder<Block, CeilingDisplayBlock> CEILING_DISPLAY_BLOCK = BLOCKS.register(
+            "ceiling_display", () -> new CeilingDisplayBlock(BlockBehaviour.Properties.of()
+                    .mapColor(MapColor.METAL).strength(2.5F).requiresCorrectToolForDrops()
+                    .noOcclusion()));
+    public static final DeferredHolder<Block, DoorLcdBlock> DOOR_LCD_BLOCK = BLOCKS.register(
+            "door_lcd", () -> new DoorLcdBlock(BlockBehaviour.Properties.of()
+                    .mapColor(MapColor.METAL).strength(2.5F).requiresCorrectToolForDrops()
+                    .noOcclusion()));
+    public static final DeferredHolder<Block, CarriageInfoDisplayBlock>
+            CARRIAGE_INFO_DISPLAY_BLOCK = BLOCKS.register(
+                    "carriage_info_display", () -> new CarriageInfoDisplayBlock(
+                            BlockBehaviour.Properties.of().mapColor(MapColor.METAL)
+                                    .strength(2.0F).requiresCorrectToolForDrops().noOcclusion()));
+    public static final DeferredHolder<Block, TrainLightPanelBlock> TRAIN_LIGHT_PANEL_BLOCK = BLOCKS.register(
+            "train_light_panel", () -> new TrainLightPanelBlock(BlockBehaviour.Properties.of()
+                    .mapColor(MapColor.QUARTZ).strength(1.8F).requiresCorrectToolForDrops()
+                    .lightLevel(state -> 15).noOcclusion()));
     public static final DeferredHolder<Item, BlockItem> SCREEN_ITEM = ITEMS.register(
             "screen", () -> new BlockItem(SCREEN_BLOCK.get(), new Item.Properties()));
     public static final DeferredHolder<Item, BlockItem> SCREEN_CABLE_ITEM = ITEMS.register(
@@ -60,6 +93,26 @@ public final class MineScreen {
             "fixed_keyboard", () -> new BlockItem(FIXED_KEYBOARD_BLOCK.get(), new Item.Properties()));
     public static final DeferredHolder<Item, BlockItem> COMPUTER_ITEM = ITEMS.register(
             "computer", () -> new BlockItem(COMPUTER_BLOCK.get(), new Item.Properties()));
+    public static final DeferredHolder<Item, BlockItem> TEXT_DISPLAY_ITEM = ITEMS.register(
+            "text_display", () -> new BlockItem(TEXT_DISPLAY_BLOCK.get(), new Item.Properties()));
+    public static final DeferredHolder<Item, BlockItem> ANIMATED_TEXT_DISPLAY_ITEM = ITEMS.register(
+            "animated_text_display",
+            () -> new BlockItem(ANIMATED_TEXT_DISPLAY_BLOCK.get(), new Item.Properties()));
+    public static final DeferredHolder<Item, BlockItem> TRAFFIC_DISPLAY_ITEM = ITEMS.register(
+            "traffic_display", () -> new TrafficDisplayBlockItem(TRAFFIC_DISPLAY_BLOCK.get(),
+                    new Item.Properties()));
+    public static final DeferredHolder<Item, BlockItem> ELECTRIC_DISPLAY_ITEM = ITEMS.register(
+            "electric_display", () -> new BlockItem(ELECTRIC_DISPLAY_BLOCK.get(), new Item.Properties()));
+    public static final DeferredHolder<Item, BlockItem> CEILING_DISPLAY_ITEM = ITEMS.register(
+            "ceiling_display", () -> new BlockItem(CEILING_DISPLAY_BLOCK.get(), new Item.Properties()));
+    public static final DeferredHolder<Item, BlockItem> DOOR_LCD_ITEM = ITEMS.register(
+            "door_lcd", () -> new BlockItem(DOOR_LCD_BLOCK.get(), new Item.Properties()));
+    public static final DeferredHolder<Item, BlockItem> CARRIAGE_INFO_DISPLAY_ITEM = ITEMS.register(
+            "carriage_info_display", () -> new CarriageInfoDisplayBlockItem(
+                    CARRIAGE_INFO_DISPLAY_BLOCK.get(), new Item.Properties()));
+    public static final DeferredHolder<Item, BlockItem> TRAIN_LIGHT_PANEL_ITEM = ITEMS.register(
+            "train_light_panel", () -> new BlockItem(TRAIN_LIGHT_PANEL_BLOCK.get(),
+                    new Item.Properties()));
     public static final DeferredHolder<Item, KeyboardItem> KEYBOARD_ITEM = ITEMS.register(
             "keyboard", () -> new KeyboardItem(new Item.Properties().stacksTo(1)));
     public static final DeferredHolder<Item, Item> SCREEN_CONFIGURATOR_ITEM = ITEMS.register(
@@ -72,6 +125,26 @@ public final class MineScreen {
             net.minecraft.world.level.block.entity.BlockEntityType<ComputerBlockEntity>> COMPUTER_BLOCK_ENTITY =
             BLOCK_ENTITY_TYPES.register("computer", () -> net.minecraft.world.level.block.entity.BlockEntityType.Builder
                     .of(ComputerBlockEntity::new, COMPUTER_BLOCK.get()).build(null));
+    public static final DeferredHolder<net.minecraft.world.level.block.entity.BlockEntityType<?>,
+            net.minecraft.world.level.block.entity.BlockEntityType<TextDisplayBlockEntity>> TEXT_DISPLAY_BLOCK_ENTITY =
+            BLOCK_ENTITY_TYPES.register("text_display",
+                    () -> net.minecraft.world.level.block.entity.BlockEntityType.Builder
+                             .of(TextDisplayBlockEntity::new, TEXT_DISPLAY_BLOCK.get(),
+                                     ANIMATED_TEXT_DISPLAY_BLOCK.get(), TRAFFIC_DISPLAY_BLOCK.get(),
+                                     ELECTRIC_DISPLAY_BLOCK.get()).build(null));
+    public static final DeferredHolder<net.minecraft.world.level.block.entity.BlockEntityType<?>,
+            net.minecraft.world.level.block.entity.BlockEntityType<CeilingDisplayBlockEntity>> CEILING_DISPLAY_BLOCK_ENTITY =
+            BLOCK_ENTITY_TYPES.register("ceiling_display",
+                    () -> net.minecraft.world.level.block.entity.BlockEntityType.Builder
+                            .of(CeilingDisplayBlockEntity::new, CEILING_DISPLAY_BLOCK.get(),
+                                    DOOR_LCD_BLOCK.get(), CARRIAGE_INFO_DISPLAY_BLOCK.get())
+                            .build(null));
+    public static final DeferredHolder<net.minecraft.world.level.block.entity.BlockEntityType<?>,
+            net.minecraft.world.level.block.entity.BlockEntityType<TrainLightPanelBlockEntity>> TRAIN_LIGHT_PANEL_BLOCK_ENTITY =
+            BLOCK_ENTITY_TYPES.register("train_light_panel",
+                    () -> net.minecraft.world.level.block.entity.BlockEntityType.Builder
+                            .of(TrainLightPanelBlockEntity::new, TRAIN_LIGHT_PANEL_BLOCK.get())
+                            .build(null));
 
     public static final DeferredHolder<CreativeModeTab, CreativeModeTab> TAB = CREATIVE_TABS.register("tab",
             () -> CreativeModeTab.builder()
@@ -83,6 +156,14 @@ public final class MineScreen {
                         output.accept(SPEAKER_ITEM.get());
                         output.accept(FIXED_KEYBOARD_ITEM.get());
                         output.accept(COMPUTER_ITEM.get());
+                        output.accept(TEXT_DISPLAY_ITEM.get());
+                        output.accept(ANIMATED_TEXT_DISPLAY_ITEM.get());
+                        output.accept(TRAFFIC_DISPLAY_ITEM.get());
+                        output.accept(ELECTRIC_DISPLAY_ITEM.get());
+                        output.accept(CEILING_DISPLAY_ITEM.get());
+                        output.accept(DOOR_LCD_ITEM.get());
+                        output.accept(CARRIAGE_INFO_DISPLAY_ITEM.get());
+                        output.accept(TRAIN_LIGHT_PANEL_ITEM.get());
                         output.accept(KEYBOARD_ITEM.get());
                         output.accept(SCREEN_CONFIGURATOR_ITEM.get());
                     })
@@ -116,6 +197,14 @@ public final class MineScreen {
             event.accept(SPEAKER_ITEM.get());
             event.accept(FIXED_KEYBOARD_ITEM.get());
             event.accept(COMPUTER_ITEM.get());
+            event.accept(TEXT_DISPLAY_ITEM.get());
+            event.accept(ANIMATED_TEXT_DISPLAY_ITEM.get());
+            event.accept(TRAFFIC_DISPLAY_ITEM.get());
+            event.accept(ELECTRIC_DISPLAY_ITEM.get());
+            event.accept(CEILING_DISPLAY_ITEM.get());
+            event.accept(DOOR_LCD_ITEM.get());
+            event.accept(CARRIAGE_INFO_DISPLAY_ITEM.get());
+            event.accept(TRAIN_LIGHT_PANEL_ITEM.get());
             event.accept(KEYBOARD_ITEM.get());
             event.accept(SCREEN_CONFIGURATOR_ITEM.get());
         }

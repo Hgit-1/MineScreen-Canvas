@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": ["IGI", "RPR", "III"],
+  "key": {
+    "I": {"item": "minecraft:iron_ingot"},
+    "G": {"item": "minecraft:tinted_glass"},
+    "R": {"item": "minecraft:redstone"},
+    "P": {"item": "minecraft:paper"}
+  },
+  "result": {"id": "minescreen:text_display", "count": 2}
+}

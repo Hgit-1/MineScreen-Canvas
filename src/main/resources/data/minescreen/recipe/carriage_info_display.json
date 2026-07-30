@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": ["IGI", "RTR", "III"],
+  "key": {
+    "I": {"item": "minecraft:iron_ingot"},
+    "G": {"item": "minecraft:glass_pane"},
+    "R": {"item": "minecraft:redstone"},
+    "T": {"item": "minescreen:traffic_display"}
+  },
+  "result": {"id": "minescreen:carriage_info_display", "count": 1}
+}

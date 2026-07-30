@@ -44,7 +44,7 @@ final class AsyncContentSession implements BrowserSession {
     private static boolean finalizedThisTick;
 
     private ScreenGroup group;
-    private final ScreenGroup stateGroup;
+    private ScreenGroup stateGroup;
     private final UUID credentialGroupId;
     private final ClientScreenProfile profile;
     private final CompletableFuture<Prepared> prepared;
@@ -130,7 +130,12 @@ final class AsyncContentSession implements BrowserSession {
     public void tick(ScreenGroup nextGroup) {
         group = nextGroup;
         if (delegate != null) {
-            delegate.tick(nextGroup);
+            // A panorama/session created before Create assembly retains the physical root as its
+            // stable state group. Its synthetic canvas has no independent contraption pose, so use
+            // the transformed root for visibility and positional audio while it is moving.
+            ScreenGroup movingStateGroup = MovingScreenSpatialState.localGroup(stateGroup);
+            ScreenGroup tickGroup = movingStateGroup == null ? nextGroup : movingStateGroup;
+            delegate.tick(tickGroup);
             String backendError = delegate.errorMessage();
             if (backendError != null && !backendError.isBlank()) {
                 errorMessage = backendError;
@@ -208,6 +213,17 @@ final class AsyncContentSession implements BrowserSession {
         updateReservation();
         if (delegate != null) {
             delegate.resize(nextGroup);
+        }
+    }
+
+    @Override
+    public void setStateGroup(ScreenGroup nextStateGroup) {
+        if (nextStateGroup == null) {
+            return;
+        }
+        stateGroup = nextStateGroup;
+        if (delegate != null) {
+            delegate.setStateGroup(nextStateGroup);
         }
     }
 

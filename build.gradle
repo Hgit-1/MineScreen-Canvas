@@ -24,10 +24,35 @@ repositories {
     }
     exclusiveContent {
         forRepository {
+            mavenCentral()
+        }
+        filter {
+            includeGroup 'org.mozilla'
+        }
+    }
+    exclusiveContent {
+        forRepository {
+            mavenCentral()
+        }
+        filter {
+            includeGroup 'com.google.code.gson'
+        }
+    }
+    exclusiveContent {
+        forRepository {
             maven { url = 'https://mcef-download.cinemamod.com/repositories/releases' }
         }
         filter {
             includeGroup 'com.cinemamod'
+        }
+    }
+    exclusiveContent {
+        forRepository {
+            maven { url = 'https://maven.createmod.net' }
+        }
+        filter {
+            includeGroup 'com.simibubi.create'
+            includeGroup 'net.createmod.ponder'
         }
     }
 }
@@ -42,10 +67,25 @@ neoForge {
             client()
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
         }
+        clientSmoke {
+            client()
+            // Keep the automated client run isolated from the developer's normal run directory
+            // and from dedicated-server runs. MCEF must be discovered as an actual NeoForge mod,
+            // not merely placed on the legacy Java class path.
+            gameDirectory = project.file('run/client-smoke')
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+            systemProperty 'minescreen.qa.autoStopClient', 'true'
+        }
         server {
             server()
             programArgument '--nogui'
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+        }
+        serverSmoke {
+            server()
+            programArgument '--nogui'
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+            systemProperty 'minescreen.qa.autoStopServer', 'true'
         }
         data {
             data()
@@ -85,32 +125,72 @@ configurations {
         canBeResolved = true
         transitive = false
     }
+    scriptEmbed {
+        canBeConsumed = false
+        canBeResolved = true
+        transitive = false
+    }
+    mcefClientSmokeMod {
+        canBeConsumed = false
+        canBeResolved = true
+        transitive = false
+    }
 }
 
+def ffmpegNativePlatforms = [
+        'windows-x86_64',
+        'linux-x86_64',
+        'linux-arm64',
+        'macosx-x86_64',
+        'macosx-arm64'
+]
+
 dependencies {
-    // Keep the requested JavaCPP platform coordinate/version, but do not pull every OS/CPU native
-    // bundle into a single development install. The API jar is platform-neutral and this MVP ships
-    // the Windows x64 natives used by the first validation target. Additional classifiers can be
-    // added without changing the decoder abstraction.
+    // Keep one universal desktop distribution so a modpack does not need a platform-specific
+    // MineScreen file. JavaCPP selects only the matching native directory at runtime.
     implementation('org.bytedeco:ffmpeg-platform:7.1-1.5.11') { transitive = false }
     implementation 'org.bytedeco:ffmpeg:7.1-1.5.11'
-    runtimeOnly 'org.bytedeco:ffmpeg:7.1-1.5.11:windows-x86_64'
-    runtimeOnly 'org.bytedeco:javacpp:1.5.11:windows-x86_64'
-    // Merge API and classifier resources into the mod jar so JavaCPP sees one coherent classpath
-    // root and NeoForge never has to resolve duplicate classifier-less Jar-in-Jar identifiers.
     ffmpegEmbed 'org.bytedeco:ffmpeg:7.1-1.5.11'
     ffmpegEmbed 'org.bytedeco:javacpp:1.5.11'
-    ffmpegEmbed 'org.bytedeco:ffmpeg:7.1-1.5.11:windows-x86_64'
-    ffmpegEmbed 'org.bytedeco:javacpp:1.5.11:windows-x86_64'
+    ffmpegNativePlatforms.each { platform ->
+        runtimeOnly "org.bytedeco:ffmpeg:7.1-1.5.11:${platform}"
+        runtimeOnly "org.bytedeco:javacpp:1.5.11:${platform}"
+        // Merge API and classifier resources into one classpath root. NeoForge Jar-in-Jar metadata
+        // has no classifier field and would otherwise collapse same-version native artifacts.
+        ffmpegEmbed "org.bytedeco:ffmpeg:7.1-1.5.11:${platform}"
+        ffmpegEmbed "org.bytedeco:javacpp:1.5.11:${platform}"
+    }
+
+    // Rhino is a compact, pure-Java import-time engine. MineScreen exposes no Java objects to the
+    // template scope, denies all class access, and enforces instruction/time/output budgets. The
+    // generated declarative scene is saved and the script is never executed during world ticks.
+    compileOnly 'org.mozilla:rhino:1.9.1'
+    scriptEmbed 'org.mozilla:rhino:1.9.1'
+    testImplementation('com.google.code.gson:gson:2.11.0') { transitive = false }
 
     // MCEF is a required client mod, not shaded into MineScreen. The common artifact exposes its API;
     // the NeoForge artifact is present in development runs and is installed separately by end users.
     compileOnly 'com.cinemamod:mcef:2.1.6-1.21.1'
+    mcefClientSmokeMod 'com.cinemamod:mcef-neoforge:2.1.6-1.21.1'
+
+    // Optional Create carriage API. Client rendering and server timetable bridges are both loaded
+    // reflectively, so neither side loads Create classes when the mod is absent.
+    compileOnly("com.simibubi.create:create-1.21.1:${create_version}") { transitive = false }
+    // StationBlockEntity inherits Ponder's VirtualBlockEntity. Keep this compile-only as well;
+    // installed Create clients already provide it and dedicated servers without Create never load
+    // the reflective bridge.
+    compileOnly('net.createmod.ponder:ponder-neoforge:1.0.81+mc1.21.1') { transitive = false }
 
 }
 
 tasks.named('jar', Jar).configure {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest {
+        attributes(
+                'Implementation-Title': mod_name,
+                'Implementation-Version': mod_version
+        )
+    }
     from({ configurations.ffmpegEmbed.collect { zipTree(it) } }) {
         exclude 'META-INF/MANIFEST.MF'
         exclude 'META-INF/*.SF'
@@ -118,11 +198,34 @@ tasks.named('jar', Jar).configure {
         exclude 'META-INF/*.DSA'
         exclude 'module-info.class'
     }
+    from('LICENSE') {
+        into 'META-INF/licenses'
+        rename { 'minescreen-MIT.txt' }
+    }
+    from('THIRD_PARTY_NOTICES.md') {
+        into 'META-INF'
+    }
 }
 
-neoForge.runs.named('client') {
-    additionalRuntimeClasspathConfiguration.dependencies.add(
-            project.dependencies.create('com.cinemamod:mcef-neoforge:2.1.6-1.21.1'))
+// Keep Rhino off NeoForge's main class path. The unmodified upstream jar is a private resource that
+// is extracted only for the disposable import worker, preventing package/version collisions with
+// other mods and avoiding any server-side engine initialization.
+tasks.named('processResources', ProcessResources).configure {
+    from(configurations.scriptEmbed) {
+        into 'META-INF/minescreen/script'
+        rename { 'rhino-1.9.1.jar' }
+    }
+}
+
+def prepareClientSmokeMcef = tasks.register('prepareClientSmokeMcef', Copy) {
+    description = 'Installs the external MCEF NeoForge mod into the isolated client smoke run.'
+    group = 'verification'
+    from(configurations.mcefClientSmokeMod)
+    into(layout.projectDirectory.dir('run/client-smoke/mods'))
+}
+
+tasks.named('runClientSmoke').configure {
+    dependsOn prepareClientSmokeMcef
 }
 
 def generateModMetadata = tasks.register('generateModMetadata', ProcessResources) {
@@ -180,9 +283,21 @@ tasks.register('rfbExternalProbe', JavaExec) {
     mainClass = 'dev.minescreen.client.vnc.RfbExternalProbe'
 }
 
+tasks.register('rfbLoopbackTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.minescreen.client.vnc.RfbLoopbackTestHarness'
+}
+
+// Manual probes that instantiate Minecraft client classes need Mojang's transitive runtime
+// libraries in addition to the merged game jar. MCEF is intentionally excluded: neither decoder
+// nor template import should require Chromium to be installed just to run a release diagnostic.
+def clientProbeMinecraftClasspath = configurations.clientLegacyClasspath.copyRecursive()
+clientProbeMinecraftClasspath.exclude group: 'com.cinemamod'
+
 tasks.register('videoDecoderProbe', JavaExec) {
     dependsOn testClasses
-    classpath = sourceSets.test.runtimeClasspath + configurations.clientLegacyClasspath + files(
+    classpath = sourceSets.test.runtimeClasspath + clientProbeMinecraftClasspath + files(
             layout.buildDirectory.file("moddev/artifacts/neoforge-${neo_version}-minecraft-merged.jar"))
     mainClass = 'dev.minescreen.client.video.FfmpegVideoProbe'
     if (providers.gradleProperty('videoProbeSource').isPresent()) {
@@ -209,8 +324,73 @@ tasks.register('profileSourceTest', JavaExec) {
     mainClass = 'dev.minescreen.client.content.ClientScreenProfileSourceTestHarness'
 }
 
+tasks.register('responsiveLayoutTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.minescreen.client.ResponsiveLayoutTestHarness'
+}
+
+tasks.register('trafficImportTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath + clientProbeMinecraftClasspath + files(
+            layout.buildDirectory.file("moddev/artifacts/neoforge-${neo_version}-minecraft-merged.jar"))
+    mainClass = 'dev.minescreen.client.traffic.TrafficImportTestHarness'
+    if (providers.gradleProperty('rmpProbeSource').isPresent()) {
+        args providers.gradleProperty('rmpProbeSource').get()
+    }
+    if (providers.gradleProperty('trafficScriptProbeSource').isPresent()) {
+        if (!providers.gradleProperty('rmpProbeSource').isPresent()) {
+            args ''
+        }
+        args providers.gradleProperty('trafficScriptProbeSource').get()
+    }
+    if (providers.gradleProperty('trafficManifestProbeSource').isPresent()) {
+        args '--manifest', providers.gradleProperty('trafficManifestProbeSource').get()
+    }
+}
+
+tasks.register('trafficTemplateSyncTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.minescreen.network.TrafficTemplateSyncTestHarness'
+}
+
+tasks.register('securityPolicyTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.minescreen.network.SecurityPolicyTestHarness'
+}
+
+tasks.register('trainEtaEstimatorTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.minescreen.TrainEtaEstimatorTestHarness'
+}
+
+tasks.register('releaseIntegrityTest', JavaExec) {
+    dependsOn tasks.named('jar'), testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.minescreen.ReleaseIntegrityTestHarness'
+    args project.projectDir.absolutePath,
+            layout.buildDirectory.file("libs/${mod_id}-${mod_version}.jar").get().asFile.absolutePath,
+            mod_version
+}
+
+tasks.register('lcdStudioSimulationTest', Exec) {
+    workingDir project.file('examples/traffic_templates/linear_dual_language_lcd')
+    commandLine 'node', 'ci_test.js'
+}
+
 tasks.named('check').configure {
     dependsOn tasks.named('tightDecoderTest')
+    dependsOn tasks.named('rfbLoopbackTest')
+    dependsOn tasks.named('responsiveLayoutTest')
     dependsOn tasks.named('profileSourceTest')
     dependsOn tasks.named('packagedFfmpegProbe')
+    dependsOn tasks.named('trafficImportTest')
+    dependsOn tasks.named('trafficTemplateSyncTest')
+    dependsOn tasks.named('securityPolicyTest')
+    dependsOn tasks.named('trainEtaEstimatorTest')
+    dependsOn tasks.named('releaseIntegrityTest')
+    dependsOn tasks.named('lcdStudioSimulationTest')
 }

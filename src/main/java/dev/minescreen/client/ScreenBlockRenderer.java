@@ -7,6 +7,7 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
@@ -23,23 +24,33 @@ import dev.minescreen.client.content.ScreenRotation;
  * APIs. Video/VNC sessions update their existing DynamicTexture in place.
  */
 public final class ScreenBlockRenderer implements BlockEntityRenderer<ScreenBlockEntity> {
+    private static final double SEAM_OVERLAP = 0.00075D;
     public ScreenBlockRenderer(BlockEntityRendererProvider.Context context) {
     }
 
     @Override
     public void render(ScreenBlockEntity blockEntity, float partialTick, PoseStack poseStack,
             MultiBufferSource bufferSource, int packedLight, int packedOverlay) {
-        if (!(blockEntity.getLevel() instanceof ClientLevel level)
-                || !ScreenTileIndex.isLive(level, blockEntity)) {
+        Level level = blockEntity.getLevel();
+        if (level == null || !level.isClientSide || !ScreenTileIndex.isLive(level, blockEntity)) {
             return;
         }
-        ScreenGroup group = ScreenGroupManager.groupAt(blockEntity);
+        boolean moving = !(level instanceof ClientLevel);
+        ScreenGroup group = moving ? MovingScreenGroupManager.groupAt(blockEntity)
+                : ScreenGroupManager.groupAt(blockEntity);
         if (group == null || !group.master().equals(blockEntity.getBlockPos())) {
             return;
         }
+        if (moving) {
+            // This frame is also the visibility signal for a moving canvas. It keeps video/CEF
+            // alive while Create actually renders the contraption, without treating local
+            // contraption coordinates as ordinary world coordinates.
+            ScreenContentManager.registerMovingGroup(level, group, partialTick);
+        }
         dev.minescreen.client.content.ClientScreenProfile profile =
                 ScreenContentManager.profile(group.groupId());
-        ScreenContentManager.PanoramaRender panorama = ScreenContentManager.panoramaFor(group);
+        ScreenContentManager.PanoramaRender panorama = moving ? null
+                : ScreenContentManager.panoramaFor(group);
         if (panorama != null) {
             if (group.legacyAnchor()) {
                 renderLegacyPanorama(blockEntity, panorama, poseStack.last(), bufferSource);
@@ -50,7 +61,8 @@ public final class ScreenBlockRenderer implements BlockEntityRenderer<ScreenBloc
             return;
         }
         if (group.legacyAnchor()) {
-            ScreenRenderSource source = ScreenContentManager.sourceFor(group);
+            ScreenRenderSource source = moving ? ScreenContentManager.sourceForMoving(group)
+                    : ScreenContentManager.sourceFor(group);
             Vec3 origin = blockEntity.screenOrigin();
             Vec3 right = ScreenGeometry.right(blockEntity.facing());
             Vec3 up = ScreenGeometry.up(blockEntity.facing());
@@ -80,7 +92,9 @@ public final class ScreenBlockRenderer implements BlockEntityRenderer<ScreenBloc
         int originVertical = ScreenGeometry.coordinate(group.origin(), upDirection);
         int rotation = ScreenHostNetworkManager.rotationFor(group);
         for (ScreenRegionLayout.Canvas canvas : ScreenRegionLayout.canvases(group, profile)) {
-            ScreenRenderSource source = ScreenContentManager.sourceFor(group, canvas.regionId());
+            ScreenRenderSource source = moving
+                    ? ScreenContentManager.sourceForMoving(group, canvas.regionId())
+                    : ScreenContentManager.sourceFor(group, canvas.regionId());
             java.util.List<net.minecraft.core.BlockPos> tiles = canvas.group().tiles().stream()
                     .sorted(java.util.Comparator
                             .comparingInt((net.minecraft.core.BlockPos pos) ->
@@ -143,7 +157,7 @@ public final class ScreenBlockRenderer implements BlockEntityRenderer<ScreenBloc
         }
     }
 
-    private static void renderRotatedCanvas(ClientLevel level, Vec3 groupOrigin, Vec3 rightVector,
+    private static void renderRotatedCanvas(Level level, Vec3 groupOrigin, Vec3 rightVector,
             Vec3 upVector, ScreenGroup group,
             dev.minescreen.client.content.ClientScreenProfile profile,
             ScreenRegionLayout.Canvas canvas, ScreenRenderSource source,
@@ -291,7 +305,7 @@ public final class ScreenBlockRenderer implements BlockEntityRenderer<ScreenBloc
     }
 
     /** Maps one physical plane onto its unit-preserving slice of the shared host content canvas. */
-    private static void renderPanorama(ClientLevel level, ScreenBlockEntity blockEntity,
+    private static void renderPanorama(Level level, ScreenBlockEntity blockEntity,
             ScreenGroup group, dev.minescreen.client.content.ClientScreenProfile profile,
             ScreenContentManager.PanoramaRender panorama, PoseStack.Pose pose,
             MultiBufferSource buffers) {
@@ -386,6 +400,13 @@ public final class ScreenBlockRenderer implements BlockEntityRenderer<ScreenBloc
 
     private static void quad(VertexConsumer consumer, PoseStack.Pose pose, Vec3 origin,
             Vec3 right, Vec3 up, float u0, float u1, float vTop, float vBottom, int color) {
+        if (right.lengthSqr() > 1.0E-12D && up.lengthSqr() > 1.0E-12D) {
+            Vec3 rightInset = right.normalize().scale(SEAM_OVERLAP);
+            Vec3 upInset = up.normalize().scale(SEAM_OVERLAP);
+            origin = origin.subtract(rightInset).subtract(upInset);
+            right = right.add(rightInset.scale(2.0D));
+            up = up.add(upInset.scale(2.0D));
+        }
         vertex(consumer, pose, origin, u0, vBottom, color);
         vertex(consumer, pose, origin.add(right), u1, vBottom, color);
         vertex(consumer, pose, origin.add(right).add(up), u1, vTop, color);
@@ -401,7 +422,9 @@ public final class ScreenBlockRenderer implements BlockEntityRenderer<ScreenBloc
 
     @Override
     public AABB getRenderBoundingBox(ScreenBlockEntity blockEntity) {
-        ScreenGroup group = ScreenGroupManager.groupAt(blockEntity);
+        Level level = blockEntity.getLevel();
+        ScreenGroup group = level instanceof ClientLevel ? ScreenGroupManager.groupAt(blockEntity)
+                : MovingScreenGroupManager.groupAt(blockEntity);
         if (group != null && group.master().equals(blockEntity.getBlockPos())) {
             return group.bounds();
         }

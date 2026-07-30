@@ -23,6 +23,13 @@ public final class MineScreenEditBox extends EditBox {
         setTextColorUneditable(0xFF9AA9BA);
     }
 
+    /** Guidance stays visibly secondary; yellow is reserved for actual warnings and countdowns. */
+    @Override
+    public void setHint(Component hint) {
+        super.setHint(hint == null ? null
+                : hint.copy().withStyle(style -> style.withColor(0xFF8290A0)));
+    }
+
     @Override
     public void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         int border = isFocused() ? 0xFFFFD43B : isHovered() ? 0xFF71869D : 0xFF43546A;

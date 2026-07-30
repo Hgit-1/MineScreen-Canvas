@@ -23,8 +23,13 @@ public final class FfmpegInputOptions {
         av_dict_set(options, "reconnect_streamed", "1", 0);
         av_dict_set(options, "reconnect_on_network_error", "1", 0);
         av_dict_set(options, "reconnect_delay_max", "5", 0);
-        av_dict_set(options, "user_agent", "MineScreen/1.0.1", 0);
+        av_dict_set(options, "user_agent", userAgent(), 0);
         return options;
+    }
+
+    private static String userAgent() {
+        String version = FfmpegInputOptions.class.getPackage().getImplementationVersion();
+        return "MineScreen/" + (version == null || version.isBlank() ? "development" : version);
     }
 
     public static void free(AVDictionary options) {

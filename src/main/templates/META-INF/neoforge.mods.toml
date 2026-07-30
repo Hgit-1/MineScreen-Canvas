@@ -36,3 +36,10 @@ type="required"
 versionRange="[2.1.6,)"
 ordering="AFTER"
 side="CLIENT"
+
+[[dependencies.${mod_id}]]
+modId="create"
+type="optional"
+versionRange="[6.0.9,7.0.0)"
+ordering="AFTER"
+side="BOTH"

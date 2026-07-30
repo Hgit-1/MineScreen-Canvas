@@ -33,8 +33,12 @@ public final class ScreenContentManager {
     private static final Map<RegionSessionKey, ScreenContentSession> REGION_SESSIONS = new HashMap<>();
     private static final Map<UUID, PanoramaSession> PANORAMA_SESSIONS = new HashMap<>();
     private static final Map<UUID, ScreenGroup> GROUPS = new HashMap<>();
+    private static final Map<UUID, TimedGroup> MOVING_GROUPS = new HashMap<>();
+    private static final Map<UUID, TimedGroup> DETACHED_GROUPS = new HashMap<>();
     private static final Map<UUID, Long> KEEP_ALIVE_UNTIL = new HashMap<>();
     private static final Map<UUID, Long> FAILURE_NOTICE_UNTIL = new HashMap<>();
+    private static final long MOVING_GROUP_TTL_NANOS =
+            java.util.concurrent.TimeUnit.SECONDS.toNanos(2L);
 
     private ScreenContentManager() {
     }
@@ -45,24 +49,37 @@ public final class ScreenContentManager {
         if (Minecraft.getInstance().level == null) {
             closeAll();
             GROUPS.clear();
+            MOVING_GROUPS.clear();
+            DETACHED_GROUPS.clear();
+            MovingScreenSpatialState.clearAll();
             KEEP_ALIVE_UNTIL.clear();
             FAILURE_NOTICE_UNTIL.clear();
             return;
         }
+        long now = System.nanoTime();
+        MovingScreenSpatialState.removeExpired();
+        MOVING_GROUPS.entrySet().removeIf(entry ->
+                now - entry.getValue().lastSeenNanos() > MOVING_GROUP_TTL_NANOS);
         for (Map.Entry<UUID, ScreenContentSession> entry : List.copyOf(SESSIONS.entrySet())) {
-            ScreenGroup group = GROUPS.get(entry.getKey());
-            if (group != null) {
-                if (!ScreenPowerManager.isPowered(group)) {
-                    closeSession(entry.getKey());
-                    continue;
-                }
-                entry.getValue().tick(primaryCanvasGroup(group));
+            ScreenGroup staticGroup = GROUPS.get(entry.getKey());
+            ScreenGroup group = activeGroup(entry.getKey(), now);
+            if (group == null) {
+                closeSession(entry.getKey());
+                continue;
             }
+            if (staticGroup != null && !ScreenPowerManager.isPowered(staticGroup)) {
+                closeSession(entry.getKey());
+                continue;
+            }
+            entry.getValue().setStateGroup(group);
+            entry.getValue().tick(staticGroup == null ? movingPrimaryCanvasGroup(group)
+                    : primaryCanvasGroup(group));
         }
         for (Map.Entry<RegionSessionKey, ScreenContentSession> entry
                 : List.copyOf(REGION_SESSIONS.entrySet())) {
-            ScreenGroup parent = GROUPS.get(entry.getKey().groupId());
-            if (parent != null && !ScreenPowerManager.isPowered(parent)) {
+            ScreenGroup staticParent = GROUPS.get(entry.getKey().groupId());
+            ScreenGroup parent = activeGroup(entry.getKey().groupId(), now);
+            if (staticParent != null && !ScreenPowerManager.isPowered(staticParent)) {
                 closeRegionSession(entry.getKey());
                 continue;
             }
@@ -72,19 +89,31 @@ public final class ScreenContentManager {
             if (canvas == null) {
                 closeRegionSession(entry.getKey());
             } else {
-                entry.getValue().tick(contentCanvasGroup(parent, canvas.group()));
+                entry.getValue().setStateGroup(canvas.group());
+                entry.getValue().tick(staticParent == null ? canvas.group()
+                        : contentCanvasGroup(parent, canvas.group()));
             }
         }
         ScreenHostNetworkManager.ensure(Minecraft.getInstance().level);
         for (Map.Entry<UUID, PanoramaSession> entry : List.copyOf(PANORAMA_SESSIONS.entrySet())) {
             ScreenHostNetworkManager.HostNetwork network =
                     ScreenHostNetworkManager.network(entry.getKey());
-            if (network == null || !network.panoramic()) {
+            if (network == null) {
+                PanoramaSession holder = entry.getValue();
+                ScreenGroup movingOrDetached = activeGroup(holder.rootGroupId(), now);
+                if (movingOrDetached == null) {
+                    closePanoramaSession(entry.getKey());
+                } else {
+                    holder.session().setStateGroup(movingOrDetached);
+                    holder.session().tick(movingPrimaryCanvasGroup(movingOrDetached));
+                }
+            } else if (!network.panoramic()) {
                 closePanoramaSession(entry.getKey());
             } else if (!ScreenPowerManager.isPowered(network.rootGroup())) {
                 closePanoramaSession(entry.getKey());
             } else {
                 PanoramaSession holder = entry.getValue();
+                holder.session().setStateGroup(network.rootGroup());
                 if (network.signature() != holder.signature()) {
                     holder.session().resize(network.canvas());
                     holder = new PanoramaSession(network.signature(), network.rootGroupId(),
@@ -94,6 +123,8 @@ public final class ScreenContentManager {
                 holder.session().tick(network.canvas());
             }
         }
+        DETACHED_GROUPS.entrySet().removeIf(entry ->
+                now - entry.getValue().lastSeenNanos() > MOVING_GROUP_TTL_NANOS);
     }
 
     public static void onGroupsChanged(List<ScreenGroup> groups) {
@@ -106,12 +137,25 @@ public final class ScreenContentManager {
         groups.forEach(group -> next.put(group.groupId(), group));
         Set<UUID> topologyMigrated = migrateProfiles(next.values());
 
-        Set<UUID> removed = new HashSet<>(SESSIONS.keySet());
-        removed.removeAll(next.keySet());
-        removed.addAll(topologyMigrated);
-        removed.forEach(ScreenContentManager::closeSession);
-
         Map<UUID, ScreenGroup> previousGroups = new HashMap<>(GROUPS);
+        long now = System.nanoTime();
+        previousGroups.forEach((id, group) -> {
+            if (!next.containsKey(id)) {
+                // A Create assembly removes the real-world BEs before their virtual render-world
+                // copies are first drawn. Keep the session briefly so that transition cannot
+                // reload Chromium or restart FFmpeg merely because of event/render ordering.
+                DETACHED_GROUPS.put(id, new TimedGroup(group, now));
+            }
+        });
+        next.keySet().forEach(DETACHED_GROUPS::remove);
+        next.keySet().forEach(MovingScreenSpatialState::clear);
+        topologyMigrated.forEach(id -> {
+            DETACHED_GROUPS.remove(id);
+            closeSession(id);
+            REGION_SESSIONS.keySet().stream().filter(key -> key.groupId().equals(id)).toList()
+                    .forEach(ScreenContentManager::closeRegionSession);
+        });
+
         GROUPS.clear();
         GROUPS.putAll(next);
         for (Map.Entry<UUID, ScreenContentSession> entry : List.copyOf(SESSIONS.entrySet())) {
@@ -125,14 +169,16 @@ public final class ScreenContentManager {
         }
         for (Map.Entry<RegionSessionKey, ScreenContentSession> entry
                 : List.copyOf(REGION_SESSIONS.entrySet())) {
-            ScreenGroup parent = GROUPS.get(entry.getKey().groupId());
+            ScreenGroup staticParent = GROUPS.get(entry.getKey().groupId());
+            ScreenGroup parent = activeGroup(entry.getKey().groupId(), now);
             ScreenRegionLayout.Canvas canvas = parent == null ? null
                     : ScreenRegionLayout.canvas(parent, profile(parent.groupId()),
                             entry.getKey().regionId());
             if (canvas == null) {
                 closeRegionSession(entry.getKey());
             } else {
-                entry.getValue().resize(contentCanvasGroup(parent, canvas.group()));
+                entry.getValue().resize(staticParent == null ? canvas.group()
+                        : contentCanvasGroup(parent, canvas.group()));
             }
         }
     }
@@ -388,6 +434,57 @@ public final class ScreenContentManager {
         return session.renderSource();
     }
 
+    /**
+     * Registers a canvas rendered from a moving-structure virtual Level. Rendering is its liveness
+     * signal because these Levels do not emit ordinary chunk load/unload events. The short keepalive
+     * also makes visibility checks use the BER's real culling result instead of local coordinates.
+     */
+    public static void registerMovingGroup(net.minecraft.world.level.Level virtualLevel,
+            ScreenGroup group, float partialTick) {
+        MovingScreenSpatialState.update(virtualLevel, group, partialTick);
+        registerMovingGroup(group);
+        if (!MovingScreenSpatialState.isMoving(group)) {
+            // Generic fallback for a virtual-world renderer without a dedicated spatial adapter.
+            requestHostKeepAlive(group.groupId());
+        }
+    }
+
+    private static void registerMovingGroup(ScreenGroup group) {
+        if (group == null) {
+            return;
+        }
+        long now = System.nanoTime();
+        MOVING_GROUPS.put(group.groupId(), new TimedGroup(group, now));
+        DETACHED_GROUPS.remove(group.groupId());
+    }
+
+    /** Liveness registration for custom client-rendered devices that intentionally ignore power. */
+    public static void registerAuxiliaryGroup(ScreenGroup group) {
+        registerMovingGroup(group);
+    }
+
+    /** Content source for Create/other virtual render worlds; virtual redstone is not world-ticked. */
+    public static ScreenRenderSource sourceForMoving(ScreenGroup group) {
+        ClientScreenProfile profile = dev.minescreen.client.network.ClientNetworkState.effectiveProfile(
+                group.groupId(), profile(group.groupId()));
+        if (profile.contentType == ScreenContentType.IDLE || profile.source.isBlank()) {
+            return ScreenTextureManager.idleRenderSource();
+        }
+        ScreenContentSession session = SESSIONS.get(group.groupId());
+        if (session instanceof FailedContentSession failed && failed.retryReady()) {
+            closeSession(group.groupId());
+            session = null;
+        }
+        if (session == null) {
+            session = takePanoramaSession(group.groupId(), movingPrimaryCanvasGroup(group));
+            if (session == null) {
+                session = createSession(movingPrimaryCanvasGroup(group), profile);
+            }
+            SESSIONS.put(group.groupId(), session);
+        }
+        return session.renderSource();
+    }
+
     /** Shared main-screen source plus the normalized slice assigned to one physical plane. */
     public static PanoramaRender panoramaFor(ScreenGroup group) {
         ScreenHostNetworkManager.HostNetwork network = ScreenHostNetworkManager.networkFor(group);
@@ -411,8 +508,13 @@ public final class ScreenContentManager {
         }
         PanoramaSession holder = PANORAMA_SESSIONS.get(network.networkId());
         if (holder == null) {
-            ScreenContentSession session = createSession(network.canvas(), root,
-                    network.rootGroup(), network.rootGroupId());
+            ScreenContentSession session = SESSIONS.remove(network.rootGroupId());
+            if (session != null) {
+                session.resize(network.canvas());
+            } else {
+                session = createSession(network.canvas(), root,
+                        network.rootGroup(), network.rootGroupId());
+            }
             if (session == null) {
                 return null;
             }
@@ -574,6 +676,33 @@ public final class ScreenContentManager {
         return session.renderSource();
     }
 
+    public static ScreenRenderSource sourceForMoving(ScreenGroup parent, int regionId) {
+        if (regionId <= 0) {
+            return sourceForMoving(parent);
+        }
+        ClientScreenProfile root = profile(parent.groupId());
+        ScreenRegionLayout.Canvas canvas = ScreenRegionLayout.canvas(parent, root, regionId);
+        if (canvas == null) {
+            return ScreenTextureManager.idleRenderSource();
+        }
+        MovingScreenSpatialState.updateDerived(parent, canvas.group());
+        ClientScreenProfile regionProfile = ScreenRegionLayout.profileFor(root, regionId);
+        if (regionProfile.contentType == ScreenContentType.IDLE || regionProfile.source.isBlank()) {
+            return ScreenTextureManager.idleRenderSource();
+        }
+        RegionSessionKey key = new RegionSessionKey(parent.groupId(), regionId);
+        ScreenContentSession session = REGION_SESSIONS.get(key);
+        if (session instanceof FailedContentSession failed && failed.retryReady()) {
+            closeRegionSession(key);
+            session = null;
+        }
+        if (session == null) {
+            session = createSession(canvas.group(), regionProfile);
+            REGION_SESSIONS.put(key, session);
+        }
+        return session.renderSource();
+    }
+
     public static ScreenContentSession session(UUID groupId) {
         ScreenContentSession session = SESSIONS.get(groupId);
         if (session != null) {
@@ -618,6 +747,19 @@ public final class ScreenContentManager {
             return false;
         }
         return true;
+    }
+
+    public static ScreenGroup movingGroup(UUID groupId) {
+        TimedGroup timed = MOVING_GROUPS.get(groupId);
+        return timed == null || System.nanoTime() - timed.lastSeenNanos() > MOVING_GROUP_TTL_NANOS
+                ? null : timed.group();
+    }
+
+    public static List<ScreenGroup> movingGroups() {
+        long now = System.nanoTime();
+        return MOVING_GROUPS.values().stream()
+                .filter(group -> now - group.lastSeenNanos() <= MOVING_GROUP_TTL_NANOS)
+                .map(TimedGroup::group).toList();
     }
 
     public static void onRemoteStateChanged(UUID groupId) {
@@ -673,6 +815,26 @@ public final class ScreenContentManager {
         ScreenRegionLayout.Canvas canvas = ScreenRegionLayout.canvas(parent,
                 profile(parent.groupId()), 0);
         return contentCanvasGroup(parent, canvas == null ? parent : canvas.group());
+    }
+
+    private static ScreenGroup movingPrimaryCanvasGroup(ScreenGroup parent) {
+        ScreenRegionLayout.Canvas canvas = ScreenRegionLayout.canvas(parent,
+                profile(parent.groupId()), 0);
+        return canvas == null ? parent : canvas.group();
+    }
+
+    private static ScreenGroup activeGroup(UUID groupId, long now) {
+        ScreenGroup group = GROUPS.get(groupId);
+        if (group != null) {
+            return group;
+        }
+        TimedGroup moving = MOVING_GROUPS.get(groupId);
+        if (moving != null && now - moving.lastSeenNanos() <= MOVING_GROUP_TTL_NANOS) {
+            return moving.group();
+        }
+        TimedGroup detached = DETACHED_GROUPS.get(groupId);
+        return detached != null && now - detached.lastSeenNanos() <= MOVING_GROUP_TTL_NANOS
+                ? detached.group() : null;
     }
 
     private static ScreenGroup contentCanvasGroup(ScreenGroup parent, ScreenGroup canvas) {
@@ -796,6 +958,22 @@ public final class ScreenContentManager {
         }
     }
 
+    /** Moves an assembled root from its former host panorama into the moving physical surface. */
+    private static ScreenContentSession takePanoramaSession(UUID rootGroupId,
+            ScreenGroup movingCanvas) {
+        for (Map.Entry<UUID, PanoramaSession> entry
+                : List.copyOf(PANORAMA_SESSIONS.entrySet())) {
+            PanoramaSession holder = entry.getValue();
+            if (!holder.rootGroupId().equals(rootGroupId)) {
+                continue;
+            }
+            PANORAMA_SESSIONS.remove(entry.getKey());
+            holder.session().resize(movingCanvas);
+            return holder.session();
+        }
+        return null;
+    }
+
     private static ScreenHostNetworkManager.HostNetwork hostNetwork(UUID groupId) {
         ScreenGroup group = GROUPS.get(groupId);
         return group == null ? null : ScreenHostNetworkManager.networkFor(group);
@@ -838,6 +1016,9 @@ public final class ScreenContentManager {
     }
 
     private record RegionSessionKey(UUID groupId, int regionId) {
+    }
+
+    private record TimedGroup(ScreenGroup group, long lastSeenNanos) {
     }
 
     private record PanoramaSession(long signature, UUID rootGroupId,

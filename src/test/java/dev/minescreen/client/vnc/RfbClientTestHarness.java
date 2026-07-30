@@ -15,7 +15,7 @@ import javax.crypto.spec.SecretKeySpec;
 
 /** Loopback RFB 3.8/VNC-auth/raw-frame integration test for the real client worker. */
 final class RfbClientTestHarness {
-    private static final String PASSWORD = "mine1234";
+    private static final String TEST_CREDENTIAL = "rfb-test";
 
     private RfbClientTestHarness() {
     }
@@ -26,7 +26,8 @@ final class RfbClientTestHarness {
             Thread worker = new Thread(() -> serve(server, serverFailure), "rfb-test-server");
             worker.start();
             try (RfbClient client = new RfbClient(
-                    new RfbEndpoint("127.0.0.1", server.getLocalPort()), PASSWORD, 9, 5, 1024, false)) {
+                    new RfbEndpoint("127.0.0.1", server.getLocalPort()), TEST_CREDENTIAL,
+                    9, 5, 1024, false)) {
                 client.start();
                 long deadline = System.nanoTime() + 5_000_000_000L;
                 while (!client.receivedFramebufferUpdate() && System.nanoTime() < deadline) {
@@ -69,7 +70,7 @@ final class RfbClientTestHarness {
             }
             output.write(challenge);
             output.flush();
-            assertBytes(input.readNBytes(16), challengeResponse(challenge, PASSWORD));
+            assertBytes(input.readNBytes(16), challengeResponse(challenge, TEST_CREDENTIAL));
             output.writeInt(0);
             output.flush();
             if (input.readUnsignedByte() != 1) {

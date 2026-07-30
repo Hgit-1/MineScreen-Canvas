@@ -1,0 +1,9 @@
+{
+  "id": "metro_blue",
+  "name": "Metro Blue Line",
+  "layout": "builtin_transit_v1",
+  "background_color": "#FF081522",
+  "text_color": "#FFFFFFFF",
+  "accent_color": "#FF3A9BFF",
+  "background_image": "rail_map.png"
+}

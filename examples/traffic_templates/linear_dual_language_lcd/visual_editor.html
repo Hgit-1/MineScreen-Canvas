@@ -1,0 +1,872 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>MineScreen LCD Studio</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: "Segoe UI Variable", "Microsoft YaHei UI", "Noto Sans CJK SC", sans-serif;
+      --bg: #081016;
+      --surface: #101a21;
+      --surface-2: #15222b;
+      --surface-3: #1b2b35;
+      --line: #2d414d;
+      --line-strong: #49616f;
+      --text: #edf5f7;
+      --muted: #91a6b0;
+      --accent: #f07a00;
+      --accent-soft: #3a2412;
+      --success: #61d8a0;
+      --danger: #ff8c8c;
+      --shadow: 0 18px 50px #0008;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); }
+    button, input, select, textarea { font: inherit; }
+    button { color: inherit; }
+    .app-header {
+      height: 70px; padding: 0 22px; display: flex; align-items: center; gap: 16px;
+      border-bottom: 1px solid var(--line); background: #0b151bcc;
+      backdrop-filter: blur(18px); position: sticky; top: 0; z-index: 20;
+    }
+    .brand-mark {
+      width: 38px; height: 38px; display: grid; place-items: center; border-radius: 10px;
+      color: white; font-weight: 800; letter-spacing: -.04em;
+      background: linear-gradient(145deg, #ff9b34, #d65e00); box-shadow: 0 8px 20px #e56c003d;
+    }
+    .brand { min-width: 0; }
+    .brand h1 { margin: 0; font-size: 18px; letter-spacing: .01em; }
+    .brand p { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
+    .header-badge {
+      margin-left: auto; padding: 6px 10px; border: 1px solid var(--line);
+      border-radius: 999px; color: #c6d5db; background: #111d24; font-size: 12px;
+    }
+    .workspace { display: grid; grid-template-columns: 374px minmax(0, 1fr); min-height: calc(100vh - 70px); }
+    .sidebar {
+      border-right: 1px solid var(--line); background: #0b141a; padding: 14px;
+      overflow: auto; max-height: calc(100vh - 70px);
+    }
+    .sidebar-intro {
+      padding: 12px 13px; margin-bottom: 12px; border-radius: 12px;
+      color: #bed0d7; background: linear-gradient(135deg, #17262f, #111c23);
+      border: 1px solid var(--line); font-size: 12px; line-height: 1.55;
+    }
+    details.panel { margin-bottom: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow: hidden; }
+    details.panel[open] { border-color: #3d5664; }
+    details.panel > summary {
+      list-style: none; cursor: pointer; display: flex; align-items: center; gap: 9px;
+      min-height: 46px; padding: 0 13px; font-size: 13px; font-weight: 700;
+    }
+    details.panel > summary::-webkit-details-marker { display: none; }
+    details.panel > summary::before {
+      content: ""; width: 7px; height: 7px; border-right: 2px solid var(--muted);
+      border-bottom: 2px solid var(--muted); transform: rotate(-45deg); transition: transform .18s ease;
+    }
+    details.panel[open] > summary::before { transform: rotate(45deg) translate(-1px, -1px); }
+    .panel-body { padding: 0 13px 14px; border-top: 1px solid #22343e; }
+    .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding-top: 12px; }
+    .wide { grid-column: 1 / -1; }
+    label.field { display: grid; gap: 5px; min-width: 0; color: #b9cbd2; font-size: 11px; }
+    input, select, textarea {
+      width: 100%; min-width: 0; border: 1px solid #38505d; border-radius: 8px;
+      background: #0a141a; color: var(--text); padding: 8px 9px; outline: none;
+    }
+    input:focus, select:focus, textarea:focus { border-color: #f0923b; box-shadow: 0 0 0 3px #f07a0026; }
+    input[type="color"] { min-height: 38px; padding: 4px; cursor: pointer; }
+    input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); }
+    textarea { min-height: 220px; resize: vertical; font: 12px/1.5 "Cascadia Code", Consolas, monospace; }
+    .hint { margin: 10px 0 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
+    .file-drop {
+      display: grid; gap: 7px; margin-top: 12px; padding: 12px; border: 1px dashed #49616f;
+      border-radius: 10px; background: #0c171d; color: #c7d6dc; font-size: 12px;
+    }
+    .file-drop input { padding: 6px; }
+    [hidden] { display: none !important; }
+    .rmp-picker { display: grid; gap: 9px; margin-top: 10px; padding: 11px; border: 1px solid #466273;
+      border-radius: 10px; background: #10202a; }
+    .rmp-meta { color: #b9ccd4; font-size: 11px; line-height: 1.5; }
+    .timeline-toolbar { display: flex; align-items: center; gap: 8px; margin-top: 11px; }
+    .timeline-toolbar .btn { width: auto; min-height: 32px; padding: 5px 9px; font-size: 11px; }
+    .station-timeline { display: grid; gap: 8px; margin-top: 10px; }
+    .station-row { padding: 10px; border: 1px solid #2f4754; border-radius: 10px; background: #0c171d; }
+    .station-row.current { border-color: #df7d22; box-shadow: 0 0 0 2px #df7d2222; }
+    .station-row-head { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
+    .station-number { min-width: 30px; color: #f3a359; font-size: 12px; font-weight: 700; }
+    .station-row-head strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+    .station-row-actions { display: flex; gap: 4px; margin-left: auto; }
+    .station-row-actions button { width: 44px; height: 44px; padding: 0; border: 1px solid #3b5360;
+      border-radius: 6px; background: #172731; color: #dce9ed; cursor: pointer; }
+    .station-row-actions button:hover { border-color: #f0923b; background: #253b46; }
+    .station-fields { display: grid; grid-template-columns: .62fr 1.2fr 1.2fr .75fr; gap: 6px; }
+    .station-fields label { display: grid; gap: 4px; color: #8fa6b0; font-size: 10px; }
+    .station-fields input, .station-fields select { padding: 6px 7px; font-size: 11px; }
+    .station-transfer { display: grid; grid-template-columns: 1fr; gap: 4px; margin-top: 7px; }
+    .station-transfer label { color: #8fa6b0; font-size: 10px; }
+    .transfer-chip-list { display: flex; flex-wrap: wrap; gap: 4px; min-height: 18px; }
+    .transfer-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 7px 3px 4px; border-radius: 8px;
+      background: #22343e; color: #c9d8dd; font-size: 10px; }
+    .transfer-chip-route { display: inline-grid; place-items: center; min-width: 27px; min-height: 34px;
+      padding: 2px; border: 2px solid var(--chip-color, #7095a8); border-radius: 7px;
+      background: #f6f7f7; color: #111416; font-weight: 800; line-height: 1; }
+    .transfer-chip-route b, .transfer-chip-route em { display: block; font: inherit; font-style: normal; }
+    .transfer-chip-route em { margin-top: 2px; }
+    .transfer-chip-name { max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .raw-stations { display: none; }
+    .raw-toggle[open] .raw-stations { display: block; margin-top: 8px; min-height: 180px; }
+    .raw-toggle { margin-top: 10px; border-top: 1px solid #233943; padding-top: 8px; }
+    .raw-toggle summary { cursor: pointer; color: #a9bec7; font-size: 11px; }
+    .side-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 4px 0 12px; }
+    .btn {
+      min-height: 38px; border: 1px solid #3b5360; border-radius: 9px; padding: 8px 12px;
+      background: #172731; cursor: pointer; transition: background .15s ease, border-color .15s ease, transform .15s ease;
+    }
+    .btn:hover { background: #203440; border-color: #607988; }
+    .btn:active { transform: translateY(1px); }
+    .btn-primary { background: linear-gradient(180deg, #f4881b, #d96800); border-color: #ff9c3e; color: white; font-weight: 700; }
+    .btn-primary:hover { background: linear-gradient(180deg, #ff9b36, #e37205); }
+    .btn-quiet { background: transparent; }
+    .main { padding: 18px; min-width: 0; overflow: auto; }
+    .preview-card {
+      padding: 14px; border: 1px solid var(--line-strong); border-radius: 18px;
+      background: linear-gradient(145deg, #18252d, #0e171c); box-shadow: var(--shadow);
+    }
+    .preview-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .preview-title { min-width: 0; }
+    .preview-title strong { display: block; font-size: 14px; }
+    .preview-title span { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
+    .preview-actions { margin-left: auto; display: flex; gap: 7px; }
+    .preview-actions .btn { min-height: 38px; padding: 6px 10px; font-size: 12px; }
+    .screen-frame { padding: 10px; border-radius: 12px; background: #050708; border: 1px solid #34464f; }
+    canvas { display: block; width: 100%; aspect-ratio: 16 / 9; background: #f2f3f4; border-radius: 5px; }
+    .status-row { display: flex; gap: 10px; align-items: center; min-height: 42px; padding: 10px 2px 0; }
+    .status-dot { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: var(--success); box-shadow: 0 0 12px #61d8a080; }
+    .status { color: #bdd0d7; font-size: 12px; }
+    .design-audit { margin: 2px 0 0; padding: 9px 11px; border-left: 3px solid var(--success);
+      background: #0b171c; color: #bcd0d8; font-size: 11px; line-height: 1.55; }
+    .design-audit.warn { border-left-color: #f0a34f; color: #f2cfaa; }
+    .preview-actions .active { border-color: #ff9c3e; background: #382515; color: #ffd8b4; }
+    .export-card { margin-top: 16px; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+    .export-head { display: flex; align-items: start; gap: 12px; }
+    .export-head h2 { margin: 0; font-size: 15px; }
+    .export-head p { margin: 5px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .export-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+    .export-option { padding: 11px; border-radius: 10px; background: #0c171d; border: 1px solid #2d414d; }
+    .check-row { display: flex; align-items: center; gap: 8px; min-height: 37px; color: #c4d3d9; font-size: 12px; }
+    .export-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .export-actions .btn { width: auto; }
+    .advanced { margin-top: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow: hidden; }
+    .advanced summary { cursor: pointer; padding: 13px 15px; font-size: 13px; font-weight: 700; }
+    .advanced-body { padding: 0 15px 15px; }
+    .advanced textarea { min-height: 310px; }
+    .advanced-actions { display: flex; gap: 8px; margin-top: 9px; }
+    @media (max-width: 1050px) {
+      .workspace { grid-template-columns: 330px minmax(0, 1fr); }
+      .export-grid { grid-template-columns: 1fr 1fr; }
+      .station-fields { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 820px) {
+      .app-header { height: auto; min-height: 66px; padding: 12px 14px; }
+      .header-badge { display: none; }
+      .workspace { display: block; }
+      .sidebar { max-height: none; border-right: 0; border-bottom: 1px solid var(--line); }
+      .main { padding: 12px; }
+      .preview-head { align-items: flex-start; }
+      .export-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 480px) {
+      .field-grid, .side-actions { grid-template-columns: 1fr; }
+      .station-fields { grid-template-columns: 1fr !important; }
+      .wide { grid-column: auto; }
+      .preview-head { display: grid; }
+      .preview-actions { display: flex; margin-left: 0; flex-wrap: wrap; }
+      .preview-actions .btn, .station-row-actions button { min-height: 44px; height: 44px; }
+      .brand p { display: none; }
+    }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  </style>
+</head>
+<body>
+<header class="app-header">
+  <div class="brand-mark" aria-hidden="true">MS</div>
+  <div class="brand">
+    <h1>LCD Studio</h1>
+    <p>交通显示板设计、RMP 读取与独立网页导出</p>
+  </div>
+  <div class="header-badge">本地运行 · 不上传线路数据</div>
+</header>
+
+<div class="workspace">
+  <aside class="sidebar">
+    <div class="sidebar-intro">先选择语言组合与上行/下行方向，再编辑线路和站点。右侧预览会自动压缩过长英文；确认无误后可导出独立 HTML、JS 或 MineScreen manifest。</div>
+
+    <details class="panel" open>
+      <summary>显示状态</summary>
+      <div class="panel-body">
+        <div class="field-grid">
+          <label class="field">预览版面
+            <select id="page"><option value="route">线路窗口</option><option value="next">下一站</option><option value="arrival">到站前预报</option></select>
+          </label>
+          <label class="field">下一站序号<input id="nextIndex" type="number" min="1" value="3"></label>
+          <label class="field">主语言
+            <select id="primary"><option value="zh">中文</option><option value="ja">日本語</option><option value="en">English</option></select>
+          </label>
+          <label class="field">副语言
+            <select id="secondary"><option value="en">English</option><option value="zh">中文</option><option value="ja">日本語</option></select>
+          </label>
+          <label class="field">语言组合
+            <select id="languageProfile"><option value="zh-en">中文 / English</option><option value="ja-en">日本語 / English</option><option value="zh-ja">中文 / 日本語</option></select>
+          </label>
+          <label class="field">运行方向
+            <select id="activeDirection"><option value="up">上行 / Up</option><option value="down">下行 / Down</option></select>
+          </label>
+          <label class="field">可见站数<input id="visibleStations" type="number" min="3" max="12" value="8"></label>
+          <label class="field">车厢号<input id="carNumber" value="7" maxlength="5"></label>
+          <label class="check-row wide"><input id="circular" type="checkbox">环线模式（站序末端自动连接首站）</label>
+          <label class="field">闭环路段分钟<input id="loopTravelMinutes" type="number" min="0" max="120" value="2"></label>
+          <label class="field wide">预览世界时间<input id="gameTime" type="time" value="12:00"></label>
+        </div>
+      </div>
+    </details>
+
+    <details class="panel">
+      <summary>线路与终点文本</summary>
+      <div class="panel-body">
+        <div class="field-grid">
+          <label class="field">线路牌标识（显示）<input id="symbol" value="MS" maxlength="5"></label>
+          <label class="field">辅助图标<input id="lineIcon" maxlength="2" placeholder="如 ✈"></label>
+          <label class="field wide">RMP 系统代码（用于 JR 风格站号牌）<input id="systemCode" readonly placeholder="例如 JO"></label>
+          <label class="field">线路名 中文<input id="lineZh"></label>
+          <label class="field">线路名 日文<input id="lineJa"></label>
+          <label class="field">线路名 英文<input id="lineEn"></label>
+          <label class="field">种别 中文<input id="serviceZh"></label>
+          <label class="field">种别 日文<input id="serviceJa"></label>
+          <label class="field">种别 英文<input id="serviceEn"></label>
+          <label class="field">终点 中文<input id="destinationZh"></label>
+          <label class="field">终点 日文<input id="destinationJa"></label>
+          <label class="field">终点 英文<input id="destinationEn"></label>
+          <label class="field wide">到站提示 中文<input id="arrivalNoticeZh" placeholder="列车即将到达下一站，请提前做好下车准备。"></label>
+          <label class="field wide">到站提示 日文<input id="arrivalNoticeJa" placeholder="まもなく次の駅に到着します。"></label>
+          <label class="field wide">到站提示 英文<input id="arrivalNoticeEn" placeholder="The train will stop at the next station."></label>
+        </div>
+      </div>
+    </details>
+
+    <details class="panel">
+      <summary>颜色主题</summary>
+      <div class="panel-body">
+        <div class="field-grid">
+          <label class="field">线路强调色<input id="accent" type="color"></label>
+          <label class="field">下一站强调<input id="accentDark" type="color"></label>
+          <label class="field">服务种别<input id="serviceColor" type="color"></label>
+          <label class="field">顶栏背景<input id="dark" type="color"></label>
+          <label class="field">画布背景<input id="paper" type="color"></label>
+          <label class="field">正文<input id="ink" type="color"></label>
+          <label class="field">已通过站<input id="muted" type="color"></label>
+        </div>
+      </div>
+    </details>
+
+    <details class="panel">
+      <summary>位置与字号</summary>
+      <div class="panel-body">
+        <div class="field-grid">
+          <label class="field">车厢号 Y<input id="carY" type="number" step="0.005"></label>
+          <label class="field">游戏时间 Y<input id="gameTimeY" type="number" step="0.005"></label>
+          <label class="field">预计时间 Y<input id="etaY" type="number" step="0.005"></label>
+          <label class="field">线路条 Y<input id="routeY" type="number" step="0.005"></label>
+          <label class="field">站名起始 Y<input id="stationTop" type="number" step="0.005"></label>
+          <label class="field">主语言字号<input id="primaryStationSize" type="number" step="0.02"></label>
+          <label class="field">副语言字号<input id="secondaryStationSize" type="number" step="0.02"></label>
+          <label class="field">换乘信息 Y<input id="transferTop" type="number" step="0.005"></label>
+        </div>
+        <p class="hint">位置使用画布高度比例。建议每次只微调 0.005–0.02，并立即在右侧检查。</p>
+      </div>
+    </details>
+
+    <details class="panel">
+      <summary>站点、时间与换乘</summary>
+      <div class="panel-body">
+        <p class="hint">直接编辑每站名称、路段时间与编组操作。到站页最多同时排布十条换乘；上行/下行可分别保存。</p>
+        <div class="timeline-toolbar"><button class="btn" id="addStation" type="button">＋ 添加站点</button><button class="btn" id="previousStationPage" type="button">上一页</button><span class="hint" id="stationPageLabel">1 / 1</span><button class="btn" id="nextStationPage" type="button">下一页</button></div>
+        <div class="station-timeline" id="stationTimeline"></div>
+        <details class="raw-toggle"><summary>高级：编辑站点 JSON</summary><textarea id="stations" class="raw-stations" spellcheck="false"></textarea></details>
+      </div>
+    </details>
+
+    <details class="panel">
+      <summary>读取 Rail Map Painter / Toolkit</summary>
+      <div class="panel-body">
+        <label class="file-drop">选择 RMP JSON 或 .rmp 文件
+          <input id="rmpFile" type="file" accept=".json,.rmp,application/json">
+        </label>
+        <div class="rmp-picker" id="rmpPicker" hidden>
+          <label class="field">选择要导入的线路<select id="rmpLineSelect"></select></label>
+          <label class="field">导入后的当前方向<select id="rmpDirection"><option value="up">上行（图面顺序）</option><option value="down">下行（反向顺序）</option></select></label>
+          <div class="rmp-meta" id="rmpMeta"></div>
+          <button class="btn btn-primary" id="applyRmpLine" type="button">应用此线路</button>
+        </div>
+        <p class="hint">读取后可以选择具体线路。共享站点会自动转成换乘信息，并带入线路色和线路标识；导入后仍建议检查站序。</p>
+      </div>
+    </details>
+
+    <details class="panel">
+      <summary>Create 站台报站绑定</summary>
+      <div class="panel-body">
+        <div class="field-grid">
+          <label class="field">LCD 逻辑站点 ID<input id="bindingStationId" placeholder="shinjuku"></label>
+          <label class="field">Create 内部站名<input id="bindingCreateName" placeholder="新宿駅 1号站台"></label>
+          <label class="field wide">显示名别名（逗号分隔）<input id="bindingAliases" placeholder="新宿, 新宿駅, Shinjuku Station"></label>
+          <label class="field wide">维度<input id="bindingDimension" value="minecraft:overworld"></label>
+          <label class="field">X<input id="bindingX" type="number" step="0.5"></label>
+          <label class="field">Y<input id="bindingY" type="number" step="0.5"></label>
+          <label class="field">Z<input id="bindingZ" type="number" step="0.5"></label>
+          <label class="field">触发半径<input id="bindingRadius" type="number" min="1" max="128" value="12"></label>
+          <label class="check-row wide"><input id="bindingAutoCreate" type="checkbox" checked>允许 Mod 在坐标附近自动匹配 Create 站台</label>
+        </div>
+        <p class="hint">显示名、Create 内部站名和 RMP 站名分开保存。自动匹配优先坐标与别名，不会因名称相似就覆盖 LCD 显示名。</p>
+      </div>
+    </details>
+
+    <div class="side-actions">
+      <button class="btn btn-primary" id="apply">应用并预览</button>
+      <button class="btn btn-quiet" id="reset">恢复示例</button>
+      <button class="btn" id="exportManifest">导出 manifest</button>
+      <button class="btn" id="exportConfig">保存线路配置</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <section class="preview-card">
+      <div class="preview-head">
+        <div class="preview-title">
+          <strong>实时预览</strong>
+          <span>16:9 · 1280 × 720 · 与 MineScreen 声明式图元一致</span>
+        </div>
+        <div class="preview-actions">
+          <button class="btn" id="previousPreview">前一站</button>
+          <button class="btn active" data-preview-page="route">线路</button>
+          <button class="btn" data-preview-page="next">下一站</button>
+          <button class="btn" data-preview-page="arrival">预报</button>
+          <button class="btn" id="nextPreview">后一站</button>
+          <button class="btn" id="openPreviewDisplay">放大</button>
+        </div>
+      </div>
+      <div class="screen-frame"><canvas id="screen" width="1280" height="720"></canvas></div>
+      <div class="status-row"><span class="status-dot" aria-hidden="true"></span><div class="status" id="status"></div></div>
+      <div class="design-audit" id="designAudit" role="status" aria-live="polite">正在检查版面…</div>
+    </section>
+
+    <section class="export-card">
+      <div class="export-head">
+        <div>
+          <h2>直接展示与网页嵌入</h2>
+          <p>导出的 HTML 是单文件，可直接打开或上传。导出的 JS 不依赖框架，只需一个带 <code>data-minescreen-lcd</code> 的容器。</p>
+        </div>
+      </div>
+      <div class="export-grid">
+        <div class="export-option">
+          <label class="field">默认版面
+            <select id="exportPage"><option value="auto">自动轮换</option><option value="route">线路窗口</option><option value="next">下一站</option><option value="arrival">到站前预报</option></select>
+          </label>
+        </div>
+        <div class="export-option">
+          <label class="field">轮换间隔（秒）<input id="exportInterval" type="number" min="2" max="60" value="9"></label>
+        </div>
+        <div class="export-option">
+          <label class="check-row"><input id="exportControls" type="checkbox" checked>显示简洁控制栏</label>
+        </div>
+        <div class="export-option">
+          <label class="check-row"><input id="exportLanguageCycle" type="checkbox" checked>自动轮换语言</label>
+        </div>
+        <div class="export-option">
+          <label class="field">语言轮换间隔（秒）<input id="exportLanguageInterval" type="number" min="2" max="60" value="8"></label>
+        </div>
+      </div>
+      <div class="export-actions">
+        <button class="btn btn-primary" id="exportHtml">导出独立展示 HTML</button>
+        <button class="btn" id="exportJs">导出直接展示 JS</button>
+        <button class="btn" id="openShowcase">打开当前展示</button>
+      </div>
+    </section>
+
+    <details class="advanced">
+      <summary>高级：编辑最终声明式图元</summary>
+      <div class="advanced-body">
+        <p class="hint">可直接调整元素的 x、y、size、rotation、vertical、bold 与 color。普通设置重新生成时会覆盖这里的临时修改。</p>
+        <textarea id="manifest" spellcheck="false"></textarea>
+        <div class="advanced-actions">
+          <button class="btn" id="applyManifest">应用场景 JSON</button>
+          <button class="btn btn-quiet" id="syncManifest">从普通设置重新生成</button>
+        </div>
+      </div>
+    </details>
+  </main>
+</div>
+
+<script src="linear_lcd_generator.js"></script>
+<script src="rmp_reader.js"></script>
+<script>
+  const $ = id => document.getElementById(id);
+  const canvas = $('screen');
+  const context = canvas.getContext('2d');
+  let route = structuredClone(LinearLcdDemo.route);
+  let activeDirection = 'up';
+  let directionRoutes = {
+    up: structuredClone(route),
+    down: {...structuredClone(route), stations: structuredClone(route.stations).reverse().map((station,index)=>({
+      ...station, travelMinutes:index ? Number(station.travelMinutes)||2 : 0
+    })), destinationNames: structuredClone(route.stations[0].names)}
+  };
+  let template;
+  let rmpProject = null;
+  let selectedRmpLine = 0;
+  const STATIONS_PER_PAGE = 4;
+  let stationPage = 0;
+
+  function plainRoute(source, direction = activeDirection) {
+    const copy = structuredClone(source);
+    delete copy.directions;
+    copy.activeDirection = direction;
+    return copy;
+  }
+  function saveDirection() {
+    directionRoutes[activeDirection] = plainRoute(route, activeDirection);
+  }
+  function configuredRoute() {
+    saveDirection();
+    const copy = plainRoute(route);
+    copy.activeDirection = activeDirection;
+    copy.directions = {
+      up: plainRoute(directionRoutes.up, 'up'),
+      down: plainRoute(directionRoutes.down, 'down')
+    };
+    copy.directions.up.direction = 'up';
+    copy.directions.down.direction = 'down';
+    return copy;
+  }
+  function switchDirection(nextDirection) {
+    saveDirection();
+    activeDirection = nextDirection === 'down' ? 'down' : 'up';
+    route = structuredClone(directionRoutes[activeDirection]);
+    route.activeDirection = activeDirection;
+    syncControls();
+    regenerate(`已切换为${activeDirection === 'up' ? '上行' : '下行'}版面`);
+  }
+  function applyLanguageProfile(id) {
+    const profiles = {
+      'zh-en':['zh','en'],
+      'ja-en':['ja','en'],
+      'zh-ja':['zh','ja']
+    };
+    const selected = profiles[id] || profiles['zh-en'];
+    $('primary').value = selected[0];
+    $('secondary').value = selected[1];
+  }
+
+  function cssToArgb(value) {
+    const color = String(value || '#000000').replace('#', '').toUpperCase();
+    return color.length === 8 ? `#${color}` : `#FF${color.padStart(6, '0').slice(-6)}`;
+  }
+  function argbToCss(value) {
+    const color = String(value || '#FF000000').replace('#', '');
+    return `#${color.length === 8 ? color.slice(2) : color.slice(-6)}`;
+  }
+  function cssColor(value) {
+    const color = String(value || '#FFFFFFFF');
+    return /^#[0-9a-f]{8}$/i.test(color) ? `#${color.slice(3)}${color.slice(1,3)}` : color;
+  }
+  function resolveText(text) {
+    const state = template?.traffic || {};
+    return String(text || '').replace(/\$\{(line|destination|current|next|eta|status|game_time|train_name|service_type|carriage_number|carriage_count|upcoming_stops|direction|arrival_time)\}/g,
+      (_, key) => key === 'game_time' ? $('gameTime').value || '--:--' : state[key] || '');
+  }
+  function drawScene(ctx, targetCanvas, sceneTemplate, clockValue) {
+    const w = targetCanvas.width, h = targetCanvas.height;
+    ctx.clearRect(0,0,w,h); ctx.textBaseline='top'; ctx.lineCap='round'; ctx.lineJoin='round';
+    const state = sceneTemplate?.traffic || {};
+    const resolve = text => String(text || '').replace(/\$\{(line|destination|current|next|eta|status|game_time|train_name|service_type|carriage_number|carriage_count|upcoming_stops|direction|arrival_time)\}/g,
+      (_, key) => key === 'game_time' ? clockValue : state[key] || '');
+    for (const element of sceneTemplate?.elements || []) {
+      ctx.fillStyle=cssColor(element.color); ctx.strokeStyle=cssColor(element.color);
+      if (element.type === 'rect') ctx.fillRect(element.x*w,element.y*h,element.width*w,element.height*h);
+      else if (element.type === 'ellipse') { ctx.beginPath(); ctx.ellipse((element.x+element.width/2)*w,(element.y+element.height/2)*h,element.width*w/2,element.height*h/2,0,0,Math.PI*2); ctx.fill(); }
+      else if (element.type === 'line') { ctx.lineWidth=Math.max(1,(Number(element.size)||1)*h/360); ctx.beginPath(); ctx.moveTo(element.x*w,element.y*h); ctx.lineTo(element.x2*w,element.y2*h); ctx.stroke(); }
+      else if (element.type === 'text') {
+        const size=Math.max(8,(Number(element.size)||1)*h/20);
+        ctx.font=`${element.bold?700:500} ${size}px "Microsoft YaHei UI","Noto Sans CJK SC","Yu Gothic UI","Segoe UI",sans-serif`;
+        ctx.save(); ctx.translate(element.x*w,element.y*h); ctx.rotate((Number(element.rotation)||0)*Math.PI/180); ctx.textAlign=element.align||'left';
+        const value=resolve(element.text);
+        if(element.vertical)[...value].slice(0,32).forEach((glyph,index)=>ctx.fillText(glyph,0,index*size*1.02)); else { const available=element.align==='right'?element.x:element.align==='center'?Math.min(element.x,1-element.x)*2:1-element.x; ctx.fillText(value,0,0,Math.max(size*2,available*w*.96)); }
+        ctx.restore();
+      }
+    }
+  }
+  function render() {
+    if (!template) return;
+    drawScene(context, canvas, template, $('gameTime').value || '--:--');
+  }
+  function auditDesign() {
+    const warnings=[];
+    if (!route.symbol || route.symbol.length > 4) warnings.push('线路牌标识建议控制在 1–4 个字符');
+    if (['zh','ja','en'].some(lang=>!route.lineNames?.[lang])) warnings.push('线路名三种语言尚未填完整');
+    if(String(route.lineNames?.en||'').length>36) warnings.push('英文线路名较长，请检查顶栏缩放效果');
+    const longEnglish=route.stations.filter(station=>String(station.names?.en||'').length>28);
+    if(longEnglish.length) warnings.push(`${longEnglish.length} 个英文站名较长，预览已压缩但建议人工检查`);
+    const crowded=route.stations.filter(station=>(station.transfers||[]).length>10);
+    if(crowded.length) warnings.push(`${crowded.length} 个站超过 10 条换乘，到站页会折叠超出部分`);
+    const codes=route.stations.map(station=>station.code).filter(Boolean);
+    if(new Set(codes).size!==codes.length) warnings.push('存在重复站号');
+    const node=$('designAudit');
+    node.classList.toggle('warn',warnings.length>0);
+    node.textContent=warnings.length?`需要检查：${warnings.join('；')}`:'版面检查通过：语言、站号、线路牌和换乘密度均处于安全范围。';
+    const dot=document.querySelector('.status-dot');
+    if(dot) dot.style.background=warnings.length?'#f0a34f':'var(--success)';
+  }
+  function stationTransferText(station) {
+    return (station.transfers || []).map(transfer => {
+      const name = transfer.names?.zh || transfer.names?.en || transfer.symbol || '换乘';
+      const badge = transfer.systemCode || transfer.symbol || 'T';
+      return `${badge}${transfer.stationCode ? ' ' + transfer.stationCode : ''} ${name}`;
+    }).join(', ');
+  }
+  function transferChips(container, station) {
+    container.innerHTML = '';
+    (station.transfers || []).forEach(transfer => {
+      const chip = document.createElement('span');
+      chip.className = 'transfer-chip';
+      const badge = transfer.systemCode || transfer.symbol || 'T';
+      let stationCode = String(transfer.stationCode || '').trim().toUpperCase();
+      if (stationCode.toUpperCase().startsWith(String(badge).toUpperCase())) stationCode=stationCode.slice(String(badge).length);
+      if (/^\d$/.test(stationCode)) stationCode=`0${stationCode}`;
+      const marker = document.createElement('i');
+      marker.className = 'transfer-chip-route';
+      marker.setAttribute('aria-label', `${badge}${stationCode ? ` ${stationCode}` : ''}`);
+      marker.style.setProperty('--chip-color', argbToCss(transfer.color || '#FF607D8B'));
+      const system = document.createElement('b');
+      system.textContent = badge;
+      marker.appendChild(system);
+      if (stationCode) {
+        const number = document.createElement('em');
+        number.textContent = stationCode;
+        marker.appendChild(number);
+      }
+      const name = document.createElement('span');
+      name.className = 'transfer-chip-name';
+      name.textContent = transfer.names?.zh || transfer.names?.en || '';
+      chip.append(marker, name);
+      container.appendChild(chip);
+    });
+  }
+  function parseTransferText(value, previous) {
+    const previousTransfers = previous?.transfers || [];
+    return String(value || '').split(/[,，]/).map(item => item.trim()).filter(Boolean).map((item, index) => {
+      const match = item.match(/^([^\s:：-]{1,5})[\s:：-]+(.+)$/);
+      const symbol = match ? match[1] : item.slice(0, 4);
+      const name = match ? match[2] : item;
+      const old = previousTransfers[index] || {};
+      return {...old, symbol, color: old.color || '#FF607D8B', names: {
+        zh:name, ja:old.names?.ja || name, en:old.names?.en || name
+      }};
+    });
+  }
+  function syncStationsTextarea() {
+    $('stations').value = JSON.stringify(route.stations, null, 2);
+  }
+  function stationFromRow(row) {
+    const index = Number(row.dataset.index);
+    const station = route.stations[index];
+    if (!station) return;
+    const values = id => row.querySelector(`[data-field="${id}"]`).value.trim();
+    station.code = values('code') || String(index + 1).padStart(2, '0');
+    station.names = {zh: values('zh') || values('en') || station.code,
+      ja: values('ja') || values('zh') || station.code,
+      en: values('en') || values('zh') || station.code};
+    station.travelMinutes = Math.max(0, Number(values('minutes')) || 0);
+    station.transfers = parseTransferText(values('transfers'), station);
+    const operationType = values('operationType');
+    const operationDestination = values('operationDestination');
+    station.operation = operationType === 'none' ? null : {type: operationType,
+      destinationNames:{zh:operationDestination,ja:operationDestination,en:operationDestination}};
+  }
+  function renderStationTimeline() {
+    const host = $('stationTimeline');
+    if (!host) return;
+    host.innerHTML = '';
+    const pageCount=Math.max(1,Math.ceil(route.stations.length/STATIONS_PER_PAGE));
+    stationPage=Math.max(0,Math.min(stationPage,pageCount-1));
+    const start=stationPage*STATIONS_PER_PAGE;
+    $('stationPageLabel').textContent=`${stationPage+1} / ${pageCount} · ${start+1}–${Math.min(route.stations.length,start+STATIONS_PER_PAGE)} 站`;
+    $('previousStationPage').disabled=stationPage===0;
+    $('nextStationPage').disabled=stationPage>=pageCount-1;
+    route.stations.slice(start,start+STATIONS_PER_PAGE).forEach((station, pageIndex) => {
+      const index=start+pageIndex;
+      const row = document.createElement('div');
+      row.className = `station-row${index === Math.max(0, Number($('nextIndex').value || 1) - 1) ? ' current' : ''}`;
+      row.dataset.index = index;
+      row.innerHTML = `<div class="station-row-head"><span class="station-number">${String(index + 1).padStart(2, '0')}</span><strong></strong><div class="station-row-actions"><button type="button" data-action="up" aria-label="上移">↑</button><button type="button" data-action="down" aria-label="下移">↓</button><button type="button" data-action="remove" aria-label="删除">×</button></div></div><div class="station-fields"><label>站号<input data-field="code"></label><label>中文 / 主语言<input data-field="zh"></label><label>English / 副语言<input data-field="en"></label><label>路段分钟<input data-field="minutes" type="number" min="0" step="1"></label></div><div class="station-fields" style="margin-top:6px;grid-template-columns:1fr"><label>日文（可选）<input data-field="ja"></label></div><div class="station-transfer"><label>换乘（格式：线路名 空格 换乘名，可用逗号分隔）</label><input data-field="transfers" placeholder="CP 城市公园线, EX 机场快线"><div class="transfer-chip-list"></div></div><div class="station-fields" style="margin-top:6px"><label>编组操作<select data-field="operationType"><option value="none">无</option><option value="detach">本站解挂</option><option value="join">本站重连</option></select></label><label>操作目的地/说明<input data-field="operationDestination" placeholder="例如 成田 / 前八节"></label></div>`;
+      row.querySelector('strong').textContent = station.names?.zh || station.names?.en || station.code;
+      row.querySelector('[data-field="code"]').value = station.code || String(index + 1).padStart(2, '0');
+      row.querySelector('[data-field="zh"]').value = station.names?.zh || '';
+      row.querySelector('[data-field="ja"]').value = station.names?.ja || '';
+      row.querySelector('[data-field="en"]').value = station.names?.en || '';
+      row.querySelector('[data-field="minutes"]').value = Number(station.travelMinutes) || 0;
+      row.querySelector('[data-field="transfers"]').value = stationTransferText(station);
+      row.querySelector('[data-field="operationType"]').value = station.operation?.type || 'none';
+      row.querySelector('[data-field="operationDestination"]').value = station.operation?.destinationNames?.zh || '';
+      transferChips(row.querySelector('.transfer-chip-list'), station);
+      row.querySelectorAll('input, select').forEach(input => input.addEventListener('input', () => {
+        stationFromRow(row);
+        row.querySelector('strong').textContent = route.stations[index].names.zh;
+        transferChips(row.querySelector('.transfer-chip-list'), route.stations[index]);
+        syncStationsTextarea();
+        try { regenerate('已更新站点'); } catch (error) { $('status').textContent = `配置错误：${error.message}`; }
+      }));
+      row.querySelectorAll('[data-action]').forEach(button => button.addEventListener('click', () => {
+        const action = button.dataset.action;
+        if (action === 'remove' && route.stations.length > 2) route.stations.splice(index, 1);
+        if (action === 'up' && index > 0) [route.stations[index - 1], route.stations[index]] = [route.stations[index], route.stations[index - 1]];
+        if (action === 'down' && index < route.stations.length - 1) [route.stations[index + 1], route.stations[index]] = [route.stations[index], route.stations[index + 1]];
+        syncControls();
+        regenerate('已调整站点顺序');
+      }));
+      host.appendChild(row);
+    });
+    syncStationsTextarea();
+  }
+  function setValue(id,value){ $(id).value=value ?? ''; }
+  function syncControls() {
+    setValue('visibleStations',route.visibleStations||8); setValue('carNumber',route.carNumber||'7'); setValue('symbol',route.symbol||'MS');
+    $('circular').checked = route.circular === true;
+    setValue('loopTravelMinutes', route.loopTravelMinutes ?? 2);
+    setValue('lineIcon', route.lineIcon || ''); setValue('systemCode', route.systemCode || '');
+    ['zh','ja','en'].forEach(lang=>{ const suffix=lang[0].toUpperCase()+lang.slice(1); setValue('line'+suffix,route.lineNames?.[lang]); setValue('service'+suffix,route.serviceNames?.[lang]); setValue('destination'+suffix,route.destinationNames?.[lang]); });
+    ['zh','ja','en'].forEach(lang=>{ const suffix=lang[0].toUpperCase()+lang.slice(1); setValue('arrivalNotice'+suffix,route.arrivalNotice?.[lang]||''); });
+    const style=route.style||{};
+    setValue('accent',argbToCss(style.accent)); setValue('accentDark',argbToCss(style.accentDark)); setValue('serviceColor',argbToCss(style.service)); setValue('dark',argbToCss(style.dark)); setValue('paper',argbToCss(style.paper)); setValue('ink',argbToCss(style.ink)); setValue('muted',argbToCss(style.muted));
+    ['carY','gameTimeY','etaY','routeY','stationTop','primaryStationSize','secondaryStationSize','transferTop'].forEach(id=>setValue(id,style[id]));
+    $('activeDirection').value = activeDirection;
+    const profile = Object.entries({'zh-en':['zh','en'],'ja-en':['ja','en'],'zh-ja':['zh','ja']})
+      .find(([,pair])=>pair[0]===$('primary').value && pair[1]===$('secondary').value);
+    $('languageProfile').value = profile ? profile[0] : 'zh-en';
+    const binding = route.coordinateBinding || {};
+    setValue('bindingStationId', binding.logical_station_id || '');
+    setValue('bindingCreateName', binding.create_station_name || '');
+    setValue('bindingAliases', Array.isArray(binding.aliases) ? binding.aliases.join(', ') : '');
+    setValue('bindingDimension', binding.dimension || 'minecraft:overworld');
+    setValue('bindingX', binding.x ?? 0); setValue('bindingY', binding.y ?? 0);
+    setValue('bindingZ', binding.z ?? 0); setValue('bindingRadius', binding.radius ?? 12);
+    $('bindingAutoCreate').checked = binding.auto_create_platform !== false;
+    syncStationsTextarea();
+    renderStationTimeline();
+  }
+  function readControls() {
+    route.symbol=$('symbol').value.trim()||'MS'; route.lineIcon=$('lineIcon').value.trim(); route.systemCode=$('systemCode').value.trim(); route.carNumber=$('carNumber').value.trim()||'7'; route.visibleStations=Number($('visibleStations').value)||8; route.circular=$('circular').checked; route.loopTravelMinutes=Math.max(0,Math.min(120,Number($('loopTravelMinutes').value)||2));
+    route.lineNames={zh:$('lineZh').value,ja:$('lineJa').value,en:$('lineEn').value}; route.serviceNames={zh:$('serviceZh').value,ja:$('serviceJa').value,en:$('serviceEn').value}; route.destinationNames={zh:$('destinationZh').value,ja:$('destinationJa').value,en:$('destinationEn').value};
+    route.arrivalNotice={zh:$('arrivalNoticeZh').value,ja:$('arrivalNoticeJa').value,en:$('arrivalNoticeEn').value};
+    route.style={paper:cssToArgb($('paper').value),ink:cssToArgb($('ink').value),muted:cssToArgb($('muted').value),dark:cssToArgb($('dark').value),accent:cssToArgb($('accent').value),accentDark:cssToArgb($('accentDark').value),service:cssToArgb($('serviceColor').value)};
+    ['carY','gameTimeY','etaY','routeY','stationTop','primaryStationSize','secondaryStationSize','transferTop'].forEach(id=>route.style[id]=Number($(id).value));
+    const stations=JSON.parse($('stations').value); if(!Array.isArray(stations)||stations.length<2) throw new Error('站点数组至少需要两个站'); route.stations=stations;
+    route.activeDirection = activeDirection;
+    route.coordinateBinding = {
+      logical_station_id:$('bindingStationId').value.trim(),
+      create_station_name:$('bindingCreateName').value.trim(),
+      aliases:$('bindingAliases').value.split(/[,，]/).map(value=>value.trim()).filter(Boolean).slice(0,32),
+      dimension:$('bindingDimension').value.trim() || 'minecraft:overworld',
+      x:Number($('bindingX').value)||0, y:Number($('bindingY').value)||0, z:Number($('bindingZ').value)||0,
+      radius:Math.max(1,Math.min(128,Number($('bindingRadius').value)||12)),
+      auto_create_platform:$('bindingAutoCreate').checked
+    };
+  }
+  function regenerate(message='已更新预览') {
+    readControls();
+    const max=route.circular?route.stations.length:Math.max(1,route.stations.length-1); $('nextIndex').max=max; const index=Math.max(1,Math.min(Number($('nextIndex').value)||1,max)); $('nextIndex').value=index;
+    template=LinearLcdDemo.createTemplateFromRoute(configuredRoute(),index,$('primary').value,$('secondary').value,$('page').value,activeDirection);
+    document.querySelectorAll('[data-preview-page]').forEach(button=>button.classList.toggle('active',button.dataset.previewPage===$('page').value));
+    $('manifest').value=JSON.stringify(template,null,2); render(); $('status').textContent=`${message} · 第 ${index} 段 · ${template.elements.length} 个图元`;
+    const englishLong = route.stations.filter(station => String(station.names?.en || '').length > 22);
+    if (englishLong.length) $('status').textContent += ` · 英文过长 ${englishLong.length} 站，已自动压缩字号`;
+    auditDesign();
+  }
+  function download(name,value,type='application/json;charset=utf-8') {
+    const blob=new Blob([value],{type}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }
+  function applyRmpLine(index, message='已应用 RMP 线路') {
+    const line = rmpProject?.lines?.[index];
+    if (!line) return;
+    if (!Array.isArray(line.stations) || line.stations.length < 2) {
+      $('status').textContent='RMP 线路至少需要两个可见站点，当前线路未应用。';
+      $('rmpMeta').textContent='此线路只有一个可见站点，请在 RMP 中补充站点或选择其他线路。';
+      return;
+    }
+    selectedRmpLine = index;
+    const lineName = line.name || line.symbol || `Line ${index + 1}`;
+    const importedBase={...plainRoute(route),symbol:line.symbol||`R${index+1}`,
+      circular:line.circular===true,loopTravelMinutes:route.loopTravelMinutes||2,
+      lineIcon:line.icon||'',systemCode:line.systemCode||'',
+      lineNames:{zh:line.names?.zh||lineName,ja:line.names?.ja||lineName,
+        en:line.names?.en||line.secondaryName||lineName},
+      serviceNames:{zh:'普通',ja:'普通',en:'Local'},
+      style:{...route.style,accent:line.color||route.style.accent,
+        accentDark:line.color||route.style.accentDark,service:line.color||route.style.service}};
+    const forwardStations = structuredClone(line.stations).map((station, stationIndex) => ({
+      code: station.code || String(stationIndex + 1).padStart(2, '0'),
+      names: station.names || {zh: station.name || station.key, ja: station.name || station.key, en: station.name || station.key},
+      travelMinutes: Number(station.travelMinutes) || (stationIndex ? 2 : 0),
+      transfers: station.transfers || []
+    }));
+    forwardStations[0].travelMinutes=0;
+    const reverseStations=forwardStations.slice().reverse().map((station, reverseIndex)=>({
+      ...structuredClone(station),travelMinutes:reverseIndex===0?0:
+        Math.max(0,Number(forwardStations[forwardStations.length-reverseIndex]?.travelMinutes)||2)
+    }));
+    const directionRoute=(stations,direction)=>({...structuredClone(importedBase),direction,
+      activeDirection:direction,stations,destinationNames:structuredClone(stations[stations.length-1].names)});
+    directionRoutes={up:directionRoute(forwardStations,'up'),down:directionRoute(reverseStations,'down')};
+    activeDirection=$('rmpDirection').value==='down'?'down':'up';
+    route=structuredClone(directionRoutes[activeDirection]);
+    stationPage=0;
+    syncControls();
+    regenerate(`${message}：${lineName} · ${route.stations.length} 站`);
+    $('rmpMeta').textContent = `${line.symbol || 'RMP'} · ${line.color || '默认线路色'} · ${line.stations.length} 个站点 · ${line.edgeCount || 0} 条连线 · ${line.circular ? '环线已启用' : '线性'}；共享站点已转为换乘标签。`;
+  }
+  async function importRmp(file) {
+    const json=JSON.parse(await file.text());
+    rmpProject=LinearLcdRmpReader.readProject(json);
+    const lines=rmpProject.lines || [];
+    const select=$('rmpLineSelect');
+    select.innerHTML='';
+    lines.forEach((line,index)=>{const option=document.createElement('option');option.value=index;option.textContent=`${line.symbol || 'RMP'} · ${line.name || '未命名线路'} · ${line.stations.length} 站${line.circular?' · 环线':''}`;select.appendChild(option);});
+    $('rmpPicker').hidden=lines.length===0;
+    if(lines.length){select.value='0';applyRmpLine(0,'已读取 RMP');}
+    else {route.stations=rmpProject.stations || [];syncControls();regenerate('RMP 未识别出线路，请手动整理站点');}
+  }
+  function compactDisplayTemplate(value) {
+    return {elements:value.elements,traffic:value.traffic};
+  }
+  function frameCount(source) {
+    return source.circular ? source.stations.length : Math.max(1, source.stations.length - 1);
+  }
+  function createExportFrames() {
+    readControls();
+    const primary=$('primary').value, secondary=$('secondary').value;
+    const source=configuredRoute();
+    return Array.from({length:frameCount(source)},(_,offset)=>({
+      route:compactDisplayTemplate(LinearLcdDemo.createTemplateFromRoute(source,offset+1,primary,secondary,'route',activeDirection)),
+      next:compactDisplayTemplate(LinearLcdDemo.createTemplateFromRoute(source,offset+1,primary,secondary,'next',activeDirection)),
+      arrival:compactDisplayTemplate(LinearLcdDemo.createTemplateFromRoute(source,offset+1,primary,secondary,'arrival',activeDirection))
+    }));
+  }
+  function exportPages() {
+    return $('exportPage').value === 'auto' ? ['route','next','arrival'] : [$('exportPage').value];
+  }
+  function selectedLanguageProfiles() {
+    const all=[['zh-en','zh','en'],['ja-en','ja','en'],['zh-ja','zh','ja']];
+    return $('exportLanguageCycle').checked ? all : all.filter(profile=>profile[0]===$('languageProfile').value);
+  }
+  function createLanguageFrames() {
+    readControls();
+    const source=configuredRoute(), pages=exportPages(), frames={};
+    selectedLanguageProfiles().forEach(([id,primary,secondary])=>{
+      frames[id]=Array.from({length:frameCount(source)},(_,offset)=>{
+        const result={};
+        pages.forEach(page=>result[page]=compactDisplayTemplate(
+          LinearLcdDemo.createTemplateFromRoute(source,offset+1,primary,secondary,page,activeDirection)));
+        return result;
+      });
+    });
+    return frames;
+  }
+  function buildDirectScript() {
+    const importManifest=JSON.stringify(template);
+    const payload=JSON.stringify({
+      languageFrames:createLanguageFrames(),
+      languageProfiles:selectedLanguageProfiles().map(([id,primary,secondary])=>({id,primary,secondary})),
+      pages:exportPages(),
+      defaultProfile:$('languageProfile').value,
+      direction:activeDirection,
+      directions:configuredRoute().directions,
+      defaultPrimary:$('primary').value,
+      defaultSecondary:$('secondary').value,
+      defaultIndex:Number($('nextIndex').value)||1,
+      defaultPage:$('exportPage').value,
+      defaultInterval:Math.max(2,Math.min(60,Number($('exportInterval').value)||9))*1000,
+      defaultControls:$('exportControls').checked,
+      languageCycle:$('exportLanguageCycle').checked,
+      languageInterval:Math.max(2,Math.min(60,Number($('exportLanguageInterval').value)||8))*1000
+    });
+    return `function generate(){return ${importManifest};}\n(function(root){\n"use strict";\nvar DATA=${payload};DATA.frames=DATA.languageFrames[DATA.defaultProfile];\n`+
+`function color(value){var c=String(value||"#FFFFFFFF");return /^#[0-9a-f]{8}$/i.test(c)?"#"+c.slice(3)+c.slice(1,3):c;}\n`+
+`function clock(){var d=new Date();return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");}\n`+
+`function draw(ctx,canvas,t){var w=canvas.width,h=canvas.height,s=t.traffic||{};ctx.clearRect(0,0,w,h);ctx.textBaseline="top";ctx.lineCap="round";ctx.lineJoin="round";function value(v){return String(v||"").replace(/\\$\\{(line|destination|current|next|eta|status|game_time|train_name|service_type|carriage_number|carriage_count|upcoming_stops|direction|arrival_time)\\}/g,function(_,k){return k==="game_time"?clock():(s[k]||"");});}t.elements.forEach(function(e){ctx.fillStyle=color(e.color);ctx.strokeStyle=color(e.color);if(e.type==="rect")ctx.fillRect(e.x*w,e.y*h,e.width*w,e.height*h);else if(e.type==="ellipse"){ctx.beginPath();ctx.ellipse((e.x+e.width/2)*w,(e.y+e.height/2)*h,e.width*w/2,e.height*h/2,0,0,Math.PI*2);ctx.fill();}else if(e.type==="line"){ctx.lineWidth=Math.max(1,(Number(e.size)||1)*h/360);ctx.beginPath();ctx.moveTo(e.x*w,e.y*h);ctx.lineTo(e.x2*w,e.y2*h);ctx.stroke();}else if(e.type==="text"){var z=Math.max(8,(Number(e.size)||1)*h/20);ctx.font=(e.bold?"700 ":"500 ")+z+"px Microsoft YaHei UI,Noto Sans CJK SC,Yu Gothic UI,Segoe UI,sans-serif";ctx.save();ctx.translate(e.x*w,e.y*h);ctx.rotate((Number(e.rotation)||0)*Math.PI/180);ctx.textAlign=e.align||"left";var v=value(e.text);if(e.vertical)Array.from(v).slice(0,32).forEach(function(g,i){ctx.fillText(g,0,i*z*1.02);});else{var a=e.align==="right"?e.x:e.align==="center"?Math.min(e.x,1-e.x)*2:1-e.x;ctx.fillText(v,0,0,Math.max(z*2,a*w*.96));}ctx.restore();}});}\n`+
+`function mount(target,options){options=options||{};var host=typeof target==="string"?document.querySelector(target):target;if(!host)throw new Error("LCD target not found");var stage=document.createElement("div"),canvas=document.createElement("canvas"),ctx=canvas.getContext("2d"),toolbar;canvas.width=1920;canvas.height=1080;stage.style.cssText="position:relative;width:100%;aspect-ratio:16/9;background:#050708;overflow:hidden";canvas.style.cssText="display:block;width:100%;height:100%";stage.appendChild(canvas);host.appendChild(stage);var index=Math.max(1,Math.min(Number(options.index)||DATA.defaultIndex,DATA.frames.length)),mode=options.page||DATA.defaultPage,visible=mode==="next"?"next":"route",playing=options.autoplay!==false,timer,clockTimer;function render(){draw(ctx,canvas,DATA.frames[index-1][visible]);if(toolbar){toolbar.querySelector("[data-status]").textContent=index+" / "+DATA.frames.length+" · "+(playing?"运行中":"已暂停");toolbar.querySelector("[data-pause]").textContent=playing?"暂停":"继续";}}function schedule(){clearTimeout(timer);if(!playing)return;timer=setTimeout(function(){if(mode==="auto"&&visible==="route")visible="next";else{index=index>=DATA.frames.length?1:index+1;if(mode==="auto")visible="route";}render();schedule();},mode==="auto"?DATA.defaultInterval*(visible==="route"?.55:.45):DATA.defaultInterval);}var api={canvas:canvas,render:render,next:function(){index=index>=DATA.frames.length?1:index+1;render();schedule();},previous:function(){index=index<=1?DATA.frames.length:index-1;render();schedule();},play:function(){playing=true;render();schedule();},pause:function(){playing=false;clearTimeout(timer);render();},setPage:function(p){visible=p==="next"?"next":p==="route"?"route":visible==="route"?"next":"route";render();schedule();},setIndex:function(v){index=Math.max(1,Math.min(Number(v)||1,DATA.frames.length));render();schedule();},destroy:function(){clearTimeout(timer);clearInterval(clockTimer);stage.remove();}};if(options.controls!==false&&(options.controls===true||DATA.defaultControls)){toolbar=document.createElement("div");toolbar.style.cssText="position:absolute;left:12px;right:12px;bottom:12px;display:flex;gap:7px;align-items:center;padding:8px;border:1px solid #ffffff24;border-radius:11px;background:#081014dd;backdrop-filter:blur(10px);font:13px Microsoft YaHei UI,Segoe UI,sans-serif;color:#eef4f6";toolbar.innerHTML="<button data-prev>←</button><button data-pause>暂停</button><button data-next>→</button><button data-page>切换版面</button><span data-status style=\\"margin-left:auto\\"></span>";Array.from(toolbar.querySelectorAll("button")).forEach(function(b){b.style.cssText="min-height:32px;padding:5px 10px;border:1px solid #ffffff2c;border-radius:7px;background:#21313a;color:white;font:inherit;cursor:pointer";});stage.appendChild(toolbar);toolbar.querySelector("[data-prev]").onclick=api.previous;toolbar.querySelector("[data-next]").onclick=api.next;toolbar.querySelector("[data-pause]").onclick=function(){playing?api.pause():api.play();};toolbar.querySelector("[data-page]").onclick=function(){api.setPage();};}clockTimer=setInterval(render,1000);render();schedule();return api;}\n`+
+`root.MineScreenGeneratedLcd={mount:mount,data:DATA};if(typeof document!=="undefined"){function auto(){document.querySelectorAll("[data-minescreen-lcd]").forEach(function(node){if(node.dataset.minescreenMounted)return;node.dataset.minescreenMounted="1";mount(node,{page:node.dataset.page,index:node.dataset.index,interval:Number(node.dataset.interval)||undefined,controls:node.dataset.controls!=="false"});});}if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",auto);else auto();}\n}(typeof window!=="undefined"?window:this));\n`;
+  }
+  function decorateDirectScript(source) {
+    return source
+      .replace('stage=document.createElement("div"),canvas=document.createElement("canvas"),ctx=canvas.getContext("2d"),toolbar;', 'stage=document.createElement("div"),canvas=document.createElement("canvas"),motion=document.createElement("canvas"),ctx=canvas.getContext("2d"),motionCtx=motion.getContext("2d"),toolbar;')
+      .replace('canvas.width=1920;canvas.height=1080;stage.style.cssText=', 'canvas.width=1920;canvas.height=1080;motion.width=1920;motion.height=1080;stage.style.cssText=')
+      .replace('canvas.style.cssText="display:block;width:100%;height:100%";stage.appendChild(canvas);host.appendChild(stage);', 'canvas.style.cssText="position:absolute;inset:0;display:block;width:100%;height:100%";motion.style.cssText="position:absolute;inset:0;display:block;width:100%;height:100%;pointer-events:none;opacity:0";stage.appendChild(canvas);stage.appendChild(motion);host.appendChild(stage);')
+      .replace('playing=options.autoplay!==false,timer,clockTimer;', 'profile=(DATA.languageProfiles||[{id:"zh-en",primary:"zh",secondary:"en"}]).find(function(p){return p.id===(options.profile||DATA.defaultProfile);})||DATA.languageProfiles[0],primary=profile.primary,secondary=profile.secondary,playing=options.autoplay!==false,interval=Math.max(2000,Number(options.interval)||DATA.defaultInterval),languageCycle=options.languageCycle==null?DATA.languageCycle:options.languageCycle===true,languageInterval=Number(options.languageInterval)||DATA.languageInterval,languageTimer=null,timer,clockTimer;')
+      .replace('visible=mode==="next"?"next":"route"', 'visible=DATA.pages.indexOf(mode)>=0?mode:DATA.pages[0]')
+      .replace('function render(){draw(ctx,canvas,DATA.frames[index-1][visible]);', 'function animateArrival(){if(!motion.animate||window.matchMedia("(prefers-reduced-motion: reduce)").matches)return;motionCtx.clearRect(0,0,motion.width,motion.height);motionCtx.drawImage(canvas,0,0);motion.animate([{opacity:.82,clipPath:"inset(18% 0 0 0)",transform:"translateX(22px)",filter:"blur(1.2px)"},{opacity:0,clipPath:"inset(18% 0 0 0)",transform:"translateX(-8px)",filter:"blur(0)"}],{duration:520,easing:"cubic-bezier(.22,.72,.22,1)"});}function render(animate){if(animate)animateArrival();draw(ctx,canvas,(DATA.languageFrames[profile.id]||DATA.frames)[index-1][visible]);')
+      .replace('}}function schedule(){', '}}function rotateLanguage(){if(!languageCycle)return;var ps=DATA.languageProfiles||[],i=ps.indexOf(profile);profile=ps[(i+1)%ps.length];primary=profile.primary;secondary=profile.secondary;render(true);}function schedule(){')
+      .replace('if(mode==="auto"&&visible==="route")visible="next";else{', 'if(mode==="auto"&&visible==="route")visible="next";else if(mode==="auto"&&visible==="next"&&DATA.pages.indexOf("arrival")>=0)visible="arrival";else{')
+      .replace('mode==="auto"?DATA.defaultInterval*(visible==="route"?.55:.45):DATA.defaultInterval', 'mode==="auto"?interval*(visible==="route"?.45:visible==="next"?.30:.25):interval')
+      .replace('visible=p==="next"?"next":p==="route"?"route":visible==="route"?"next":"route"', 'var ps=DATA.pages||["route"];visible=p&&ps.indexOf(p)>=0?p:ps[(ps.indexOf(visible)+1)%ps.length]')
+      .replace(/render\(\);schedule\(\)/g, 'render(true);schedule()')
+      .replace('playing=false;clearTimeout(timer);render();', 'playing=false;clearTimeout(timer);render(true);')
+      .replace('clearTimeout(timer);clearInterval(clockTimer);stage.remove();', 'clearTimeout(timer);clearInterval(clockTimer);clearInterval(languageTimer);stage.remove();')
+      .replace('clockTimer=setInterval(render,1000);render(true);schedule();', 'clockTimer=setInterval(render,1000);if(languageCycle)languageTimer=setInterval(rotateLanguage,languageInterval);render(true);schedule();')
+      .replace('stage.appendChild(toolbar);toolbar.querySelector("[data-prev]")', 'stage.appendChild(toolbar);if((DATA.pages||[]).length<2)toolbar.querySelector("[data-page]").style.display="none";toolbar.querySelector("[data-prev]")')
+      .replace('controls:node.dataset.controls!=="false"', 'controls:node.dataset.controls?node.dataset.controls!=="false":DATA.defaultControls,languageCycle:DATA.languageCycle,languageInterval:DATA.languageInterval,interval:Number(node.dataset.interval)||undefined');
+  }
+  function buildStandaloneHtml() {
+    const page=$('exportPage').value, index=Number($('nextIndex').value)||1;
+    const controls=$('exportControls').checked?'true':'false';
+    const script=decorateDirectScript(buildDirectScript()).replace(/<\/script/gi,'<\\/script');
+    const endScript='<'+'/script>';
+    return `<!doctype html>\n<html lang="zh-CN">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">\n<title>MineScreen LCD Display</title>\n<style>*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#050708}body{display:grid;place-items:center}#lcd{width:min(100vw,calc(100vh * 16 / 9));height:min(100vh,calc(100vw * 9 / 16))}</style>\n</head>\n<body>\n<div id="lcd" data-minescreen-lcd data-page="${page}" data-index="${index}" data-controls="${controls}"></div>\n<script>${script}${endScript}\n</body>\n</html>\n`;
+  }
+  function movePreview(delta) {
+    const max=route.circular?route.stations.length:Math.max(1,route.stations.length-1); let value=(Number($('nextIndex').value)||1)+delta;
+    if(value<1)value=max; if(value>max)value=1; $('nextIndex').value=value; regenerate('已切换预览站点');
+  }
+  function openStandaloneDisplay() {
+    try { const blob=new Blob([buildStandaloneHtml()],{type:'text/html'}); const url=URL.createObjectURL(blob); window.open(url,'_blank','noopener'); setTimeout(()=>URL.revokeObjectURL(url),60000); }
+    catch(error){ $('status').textContent=`打开失败：${error.message}`; }
+  }
+
+  $('apply').onclick=()=>{try{regenerate();renderStationTimeline();}catch(error){$('status').textContent=`配置错误：${error.message}`;}};
+  $('reset').onclick=()=>{route=structuredClone(LinearLcdDemo.route);activeDirection='up';directionRoutes={up:structuredClone(route),down:{...structuredClone(route),stations:structuredClone(route.stations).reverse()}};syncControls();regenerate('已恢复示例');};
+  $('exportManifest').onclick=()=>download('manifest.json',JSON.stringify(template,null,2));
+  $('exportConfig').onclick=()=>download('linear-lcd-route.json',JSON.stringify(configuredRoute(),null,2));
+  $('exportJs').onclick=()=>{try{download('minescreen-generated-lcd.js',decorateDirectScript(buildDirectScript()),'text/javascript;charset=utf-8');$('status').textContent='已导出可直接展示的 JS';}catch(error){$('status').textContent=`导出失败：${error.message}`;}};
+  $('exportHtml').onclick=()=>{try{download('minescreen-lcd-display.html',buildStandaloneHtml(),'text/html;charset=utf-8');$('status').textContent='已导出独立展示 HTML';}catch(error){$('status').textContent=`导出失败：${error.message}`;}};
+  $('openShowcase').onclick=openStandaloneDisplay;
+  $('openPreviewDisplay').onclick=openStandaloneDisplay;
+  $('applyManifest').onclick=()=>{try{template=JSON.parse($('manifest').value);render();$('status').textContent='已应用高级场景 JSON';}catch(error){$('status').textContent=`场景 JSON 错误：${error.message}`;}};
+  $('syncManifest').onclick=()=>{try{regenerate('已从普通设置重新生成');}catch(error){$('status').textContent=error.message;}};
+  $('rmpFile').onchange=async event=>{try{const file=event.target.files?.[0];if(file)await importRmp(file);}catch(error){$('status').textContent=`RMP 读取失败：${error.message}`;}};
+  $('rmpLineSelect').onchange=event=>applyRmpLine(Number(event.target.value));
+  $('rmpDirection').onchange=()=>applyRmpLine(selectedRmpLine, '已更新 RMP 方向');
+  $('applyRmpLine').onclick=()=>applyRmpLine(selectedRmpLine);
+  $('languageProfile').onchange=()=>{applyLanguageProfile($('languageProfile').value);regenerate('已切换语言组合');};
+  $('activeDirection').onchange=()=>switchDirection($('activeDirection').value);
+  $('addStation').onclick=()=>{route.stations.push({code:String(route.stations.length+1).padStart(2,'0'),names:{zh:'新站',ja:'新站',en:'New Station'},travelMinutes:2,transfers:[],operation:null});stationPage=Math.ceil(route.stations.length/STATIONS_PER_PAGE)-1;syncControls();regenerate('已添加站点');};
+  $('previousStationPage').onclick=()=>{stationPage=Math.max(0,stationPage-1);renderStationTimeline();};
+  $('nextStationPage').onclick=()=>{stationPage+=1;renderStationTimeline();};
+  $('gameTime').oninput=render;
+  $('previousPreview').onclick=()=>movePreview(-1);
+  $('nextPreview').onclick=()=>movePreview(1);
+  document.querySelectorAll('[data-preview-page]').forEach(button=>button.onclick=()=>{
+    $('page').value=button.dataset.previewPage;
+    document.querySelectorAll('[data-preview-page]').forEach(item=>item.classList.toggle('active',item===button));
+    regenerate('已切换预览版面');
+  });
+  ['page','nextIndex','primary','secondary','circular','loopTravelMinutes'].forEach(id=>$(id).addEventListener('change',()=>{try{regenerate();}catch(error){$('status').textContent=`配置错误：${error.message}`;}}));
+  syncControls(); regenerate('生成器已就绪');
+</script>
+</body>
+</html>

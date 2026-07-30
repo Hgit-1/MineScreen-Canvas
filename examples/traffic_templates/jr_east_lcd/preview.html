@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>MineScreen · JR-East-inspired LCD Demo</title>
+  <style>
+    :root { color-scheme: dark;
+      font-family: "Noto Sans JP", "Yu Gothic UI", "Yu Gothic", Meiryo, "Segoe UI", sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center;
+      background: radial-gradient(circle at 50% 0%, #223847, #0b1116 65%); color: #e8f0f4; }
+    main { width: min(1100px, 96vw); }
+    h1 { margin: 0 0 8px; font-size: clamp(20px, 3vw, 32px); font-weight: 650; }
+    .note { color: #a9bbc6; margin-bottom: 18px; line-height: 1.6; }
+    .device { padding: 18px; border-radius: 22px; background: linear-gradient(#222c32, #10161a);
+      border: 1px solid #44535c; box-shadow: 0 24px 70px #000b, inset 0 1px #ffffff18; }
+    canvas { display: block; width: 100%; aspect-ratio: 16 / 9; border-radius: 8px;
+      background: #f4f7f8; box-shadow: 0 0 28px #8fffc733; }
+    .controls { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; align-items: center; }
+    button, label { border: 1px solid #4a606d; border-radius: 9px; background: #19242b;
+      color: #edf5f7; padding: 9px 14px; font: inherit; }
+    button:hover { background: #24343d; border-color: #63dda0; cursor: pointer; }
+    label { display: flex; gap: 8px; align-items: center; }
+    #status { margin-left: auto; color: #88dcae; }
+    code { color: #8de6b5; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>JR-East-inspired 车内 LCD 示例</h1>
+  <div class="note">原创演示版面，不含 JR 东日本标志、官方字体或生产屏幕素材。直接双击本文件即可预览；
+    MineScreen 中导入同目录的 <code>jr_east_lcd_generator.js</code>。</div>
+  <section class="device"><canvas id="screen" width="1280" height="720"></canvas></section>
+  <div class="controls">
+    <button id="random">随机模拟线路</button>
+    <button id="next">下一站</button>
+    <button id="language">日/英切换</button>
+    <button id="page">页面样式</button>
+    <button id="server">连接本地服务端</button>
+    <label><input id="auto" type="checkbox" checked> 自动到站</label>
+    <span id="status">本地演示</span>
+  </div>
+</main>
+<script src="jr_east_lcd_generator.js"></script>
+<script>
+  const canvas = document.getElementById('screen');
+  const context = canvas.getContext('2d');
+  const statusNode = document.getElementById('status');
+  const query = new URLSearchParams(location.search);
+  const requestedMode = ['english', 'japanese', 'kana'].includes(query.get('mode'))
+    ? query.get('mode') : 'english';
+  const requestedPage = ['next', 'loop', 'time'].includes(query.get('page'))
+    ? query.get('page') : 'loop';
+  let route = JrEastLcdDemo.allStations;
+  let template = JrEastLcdDemo.createTemplateFromRoute(route, 1, 20260726,
+    requestedMode, requestedPage);
+  let state = {...template.traffic};
+  let routeIndex = template.demo.next_index;
+  let mode = template.demo.mode;
+  let page = template.demo.page;
+  let serverTimer = null;
+
+  function resolveText(text) {
+    return String(text || '').replace(/\$\{(line|destination|current|next|eta|status)\}/g,
+      (_, key) => state[key] || '');
+  }
+
+  // MineScreen manifests use ARGB (#AARRGGBB); Canvas CSS uses RGBA (#RRGGBBAA).
+  function cssColor(value) {
+    const color = String(value || '#FFFFFFFF');
+    return /^#[0-9a-f]{8}$/i.test(color) ? `#${color.slice(3)}${color.slice(1, 3)}` : color;
+  }
+
+  function render() {
+    const w = canvas.width, h = canvas.height;
+    context.clearRect(0, 0, w, h);
+    context.textBaseline = 'top';
+    context.lineCap = 'round';
+    context.lineJoin = 'round';
+    for (const element of template.elements) {
+      context.fillStyle = cssColor(element.color);
+      context.strokeStyle = cssColor(element.color);
+      if (element.type === 'rect') {
+        context.fillRect(element.x * w, element.y * h, element.width * w, element.height * h);
+      } else if (element.type === 'ellipse') {
+        context.beginPath();
+        context.ellipse((element.x + element.width / 2) * w,
+          (element.y + element.height / 2) * h,
+          element.width * w / 2, element.height * h / 2, 0, 0, Math.PI * 2);
+        context.fill();
+      } else if (element.type === 'line') {
+        context.lineWidth = Math.max(1, (Number(element.size) || 1) * h / 360);
+        context.beginPath(); context.moveTo(element.x * w, element.y * h);
+        context.lineTo(element.x2 * w, element.y2 * h); context.stroke();
+      } else if (element.type === 'text') {
+        const size = Math.max(8, (Number(element.size) || 1) * h / 20);
+        context.font = `${element.bold ? 700 : 500} ${size}px "Noto Sans JP", "Yu Gothic UI", ` +
+          `"Yu Gothic", Meiryo, "Segoe UI", sans-serif`;
+        context.save();
+        context.translate(element.x * w, element.y * h);
+        context.rotate((Number(element.rotation) || 0) * Math.PI / 180);
+        context.textAlign = element.align || 'left';
+        const value = resolveText(element.text);
+        if (element.vertical) {
+          [...value].slice(0, 32).forEach((glyph, index) =>
+            context.fillText(glyph, 0, index * size * 1.02));
+        } else {
+          context.fillText(value, 0, 0);
+        }
+        context.restore();
+      }
+    }
+  }
+
+  function resetRandom() {
+    const seed = Date.now();
+    route = JrEastLcdDemo.chooseRoute(seed);
+    routeIndex = 1;
+    template = JrEastLcdDemo.createTemplateFromRoute(route, routeIndex, seed, mode, page);
+    state = {...template.traffic};
+    statusNode.textContent = `本地随机起点 · 完整 ${route.length} 站`; render();
+  }
+
+  function nextStation() {
+    routeIndex = Math.min(routeIndex + 1, route.length - 1);
+    template = JrEastLcdDemo.createTemplateFromRoute(route, routeIndex, template.demo.seed, mode, page);
+    state = {...template.traffic};
+    state.eta = routeIndex === route.length - 1 ? 'Arrived' : `${1 + Math.floor(Math.random() * 4)} min`;
+    state.status = routeIndex === route.length - 1 ? 'Terminus' : 'On time';
+    if (routeIndex === route.length - 1) setTimeout(resetRandom, 1800);
+    render();
+  }
+
+  function cycleLanguage() {
+    mode = mode === 'english' ? 'japanese' : mode === 'japanese' ? 'kana' : 'english';
+    template = JrEastLcdDemo.createTemplateFromRoute(route, routeIndex, template.demo.seed, mode, page);
+    state = {...template.traffic};
+    statusNode.textContent = `显示语言：${mode}`;
+    render();
+  }
+
+  function cyclePage() {
+    page = page === 'next' ? 'loop' : page === 'loop' ? 'time' : 'next';
+    template = JrEastLcdDemo.createTemplateFromRoute(route, routeIndex, template.demo.seed, mode, page);
+    state = {...template.traffic}; statusNode.textContent = `页面样式：${page}`; render();
+  }
+
+  async function connectServer() {
+    clearInterval(serverTimer);
+    async function poll() {
+      try {
+        const response = await fetch('http://127.0.0.1:8765/state', {cache: 'no-store'});
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const packet = await response.json();
+        template = packet.template; state = packet.traffic;
+        route = template.demo.stations; routeIndex = template.demo.next_index;
+        mode = template.demo.mode;
+        page = template.demo.page;
+        statusNode.textContent = '已连接 localhost:8765'; render();
+      } catch (error) { statusNode.textContent = `服务端未连接：${error.message}`; }
+    }
+    await poll(); serverTimer = setInterval(poll, 1000);
+  }
+
+  document.getElementById('random').onclick = resetRandom;
+  document.getElementById('next').onclick = nextStation;
+  document.getElementById('language').onclick = cycleLanguage;
+  document.getElementById('page').onclick = cyclePage;
+  document.getElementById('server').onclick = connectServer;
+  if (query.get('static') === '1') document.getElementById('auto').checked = false;
+  setInterval(() => { if (document.getElementById('auto').checked && !serverTimer) nextStation(); }, 3500);
+  render();
+</script>
+</body>
+</html>

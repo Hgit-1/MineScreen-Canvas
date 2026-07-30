@@ -1,6 +1,6 @@
 {
   "parent": "minecraft:item/handheld",
   "textures": {
-    "layer0": "minescreen:block/controller_controls"
+    "layer0": "minescreen:item/screen_configurator"
   }
 }

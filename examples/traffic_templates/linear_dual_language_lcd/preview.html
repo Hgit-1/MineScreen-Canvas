@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>MineScreen · 线性双语车内 LCD</title>
+  <style>
+    :root { color-scheme: dark;
+      font-family: "Noto Sans JP", "Yu Gothic UI", "Yu Gothic", Meiryo, "Segoe UI", sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center;
+      background: radial-gradient(circle at 50% 0%, #243846, #0a1116 68%); color: #edf4f6; }
+    main { width: min(1180px, 96vw); padding: 28px 0; }
+    h1 { margin: 0 0 7px; font-size: clamp(22px, 3vw, 34px); }
+    .note { color: #aec0ca; margin: 0 0 17px; line-height: 1.55; }
+    .device { padding: 18px; border: 1px solid #45545d; border-radius: 22px;
+      background: linear-gradient(#222c32, #10161a); box-shadow: 0 25px 70px #000b; }
+    canvas { display: block; width: 100%; aspect-ratio: 16 / 9; border-radius: 8px;
+      background: #f2f3f4; box-shadow: 0 0 26px #f2a34022; }
+    .controls { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; margin-top: 15px; }
+    button, label, .tag { border: 1px solid #4a606d; border-radius: 9px; background: #19242b;
+      color: #edf5f7; padding: 9px 13px; font: inherit; }
+    button:hover { cursor: pointer; background: #26363f; border-color: #f29a43; }
+    label { display: flex; gap: 7px; align-items: center; }
+    #status { margin-left: auto; color: #f4aa62; }
+    code { color: #8de6b5; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>线性双语车内 LCD 示例</h1>
+  <p class="note">面向非环状线路：主语言负责信息识别，副语言提供较弱的辅助翻译。直接打开即可预览；
+    MineScreen 导入 <code>linear_lcd_generator.js</code>。</p>
+  <section class="device"><canvas id="screen" width="1280" height="720"></canvas></section>
+  <div class="controls">
+    <button id="random">随机位置</button>
+    <button id="next">下一站</button>
+    <button id="language">切换语言组合</button>
+    <button id="page">切换版面</button>
+    <button id="server">连接本地服务端</button>
+    <label><input id="auto" type="checkbox" checked> 自动运行</label>
+    <span class="tag" id="languages">主：中文 · 副：English</span>
+    <span id="status">本地演示</span>
+  </div>
+</main>
+<script src="linear_lcd_generator.js"></script>
+<script>
+  const canvas = document.getElementById('screen');
+  const context = canvas.getContext('2d');
+  const statusNode = document.getElementById('status');
+  const languagesNode = document.getElementById('languages');
+  const query = new URLSearchParams(location.search);
+  const languageProfiles = [
+    {id:'zh-en', primary:'zh', secondary:'en'},
+    {id:'ja-en', primary:'ja', secondary:'en'},
+    {id:'zh-ja', primary:'zh', secondary:'ja'}
+  ];
+  const languageLabel = {ja: '日本語', en: 'English', zh: '中文'};
+  let profile = languageProfiles.find(item=>item.id===query.get('profile')) || languageProfiles[0];
+  let primary = profile.primary;
+  let secondary = profile.secondary;
+  let page = ['route','next','arrival'].includes(query.get('page')) ? query.get('page') : 'route';
+  let route = LinearLcdDemo.route;
+  let routeIndex = Math.max(1, Math.min(Number(query.get('index')) || 3,
+    route.stations.length - 1));
+  let template = LinearLcdDemo.createTemplateFromRoute(route, routeIndex, primary, secondary, page);
+  let state = {...template.traffic};
+  let serverTimer = null;
+
+  function clockText() {
+    const now = new Date();
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  }
+
+  function resolveText(text) {
+    return String(text || '').replace(
+      /\$\{(line|destination|current|next|eta|status|game_time|train_name|service_type|carriage_number|carriage_count|upcoming_stops|direction|arrival_time)\}/g,
+      (_, key) => key === 'game_time' ? clockText() : state[key] || '');
+  }
+
+  function cssColor(value) {
+    const color = String(value || '#FFFFFFFF');
+    return /^#[0-9a-f]{8}$/i.test(color) ? `#${color.slice(3)}${color.slice(1, 3)}` : color;
+  }
+
+  function render() {
+    const w = canvas.width, h = canvas.height;
+    context.clearRect(0, 0, w, h);
+    context.textBaseline = 'top';
+    context.lineCap = 'round';
+    context.lineJoin = 'round';
+    for (const element of template.elements) {
+      context.fillStyle = cssColor(element.color);
+      context.strokeStyle = cssColor(element.color);
+      if (element.type === 'rect') {
+        context.fillRect(element.x * w, element.y * h, element.width * w, element.height * h);
+      } else if (element.type === 'ellipse') {
+        context.beginPath();
+        context.ellipse((element.x + element.width / 2) * w,
+          (element.y + element.height / 2) * h,
+          element.width * w / 2, element.height * h / 2, 0, 0, Math.PI * 2);
+        context.fill();
+      } else if (element.type === 'line') {
+        context.lineWidth = Math.max(1, (Number(element.size) || 1) * h / 360);
+        context.beginPath();
+        context.moveTo(element.x * w, element.y * h);
+        context.lineTo(element.x2 * w, element.y2 * h);
+        context.stroke();
+      } else if (element.type === 'text') {
+        const size = Math.max(8, (Number(element.size) || 1) * h / 20);
+        context.font = `${element.bold ? 700 : 500} ${size}px "Noto Sans JP", "Yu Gothic UI", ` +
+          `"Yu Gothic", Meiryo, "Segoe UI", sans-serif`;
+        context.save();
+        context.translate(element.x * w, element.y * h);
+        context.rotate((Number(element.rotation) || 0) * Math.PI / 180);
+        context.textAlign = element.align || 'left';
+        const value = resolveText(element.text);
+        if (element.vertical) {
+          [...value].slice(0, 32).forEach((glyph, index) =>
+            context.fillText(glyph, 0, index * size * 1.02));
+        } else {
+          const available = Number(element.max_width) > 0 ? Number(element.max_width) :
+            element.align === 'right' ? element.x : element.align === 'center' ?
+              Math.min(element.x, 1 - element.x) * 2 : 1 - element.x;
+          context.fillText(value, 0, 0, Math.max(size * 2, available * w * .96));
+        }
+        context.restore();
+      }
+    }
+    languagesNode.textContent = `主：${languageLabel[primary]} · 副：${languageLabel[secondary]} · ${page === 'arrival' ? '到站前预报' : page === 'next' ? '下一站' : '线路窗口'}`;
+  }
+
+  function rebuild(message) {
+    template = LinearLcdDemo.createTemplateFromRoute(route, routeIndex, primary, secondary, page);
+    state = {...template.traffic};
+    if (message) statusNode.textContent = message;
+    render();
+  }
+
+  function randomPosition() {
+    routeIndex = 1 + Math.floor(Math.random() * (route.stations.length - 1));
+    rebuild(`随机位置：${routeIndex}/${route.stations.length - 1}`);
+  }
+
+  function nextStation() {
+    routeIndex += 1;
+    if (routeIndex >= route.stations.length) routeIndex = 1;
+    rebuild(`下一站序号：${routeIndex}`);
+  }
+
+  function swapLanguages() {
+    profile = languageProfiles[(languageProfiles.indexOf(profile) + 1) % languageProfiles.length];
+    primary = profile.primary;
+    secondary = profile.secondary;
+    rebuild('已切换语言组合');
+  }
+
+  function cyclePage() {
+    page = page === 'route' ? 'next' : page === 'next' ? 'arrival' : 'route';
+    rebuild(`版面：${page}`);
+  }
+
+  async function connectServer() {
+    clearInterval(serverTimer);
+    async function poll() {
+      try {
+        const response = await fetch('http://127.0.0.1:8766/state', {cache: 'no-store'});
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const packet = await response.json();
+        template = packet.template;
+        state = packet.traffic;
+        route = template.demo.route;
+        routeIndex = template.demo.next_index;
+        primary = template.demo.primary_language;
+        secondary = template.demo.secondary_language;
+        page = template.demo.page;
+        statusNode.textContent = '已连接 localhost:8766';
+        render();
+      } catch (error) {
+        statusNode.textContent = `服务端未连接：${error.message}`;
+      }
+    }
+    await poll();
+    serverTimer = setInterval(poll, 1000);
+  }
+
+  document.getElementById('random').onclick = randomPosition;
+  document.getElementById('next').onclick = nextStation;
+  document.getElementById('language').onclick = swapLanguages;
+  document.getElementById('page').onclick = cyclePage;
+  document.getElementById('server').onclick = connectServer;
+  if (query.get('static') === '1') document.getElementById('auto').checked = false;
+  setInterval(() => {
+    if (document.getElementById('auto').checked && !serverTimer) nextStation();
+  }, 4000);
+  setInterval(render, 1000);
+  render();
+</script>
+</body>
+</html>

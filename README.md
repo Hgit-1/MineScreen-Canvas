@@ -24,12 +24,13 @@ as independent panes or as one panoramic display.
 ## Install
 
 1. Install Minecraft Java 1.21.1 with NeoForge 21.1.219.
-2. Put `minescreen-1.0.1.jar` in the client `mods` folder.
-3. For WEB mode, also install the official MCEF NeoForge mod `2.1.6-1.21.1`.
+2. Put `minescreen-1.1.0.jar` in the client `mods` folder.
+3. Install the official MCEF NeoForge mod `2.1.6-1.21.1` on every MineScreen client.
 4. Start the game once, then configure MineScreen from `Mods -> MineScreen -> Config`.
 
-MCEF is only needed on clients that use WEB mode. A dedicated server does not need MCEF. FFmpeg
-is included for the supported local-video path; Windows x64 is the primary validation platform.
+MCEF is a required client dependency because it supplies MineScreen's browser runtime. A dedicated
+server does not need MCEF. FFmpeg is included for Windows x64, Linux x64/ARM64, and macOS
+x64/ARM64 local-video playback.
 
 ## First screen
 
@@ -70,6 +71,68 @@ VNC connects from the client to an RFB server. Tight-style rectangle decoding an
 refresh limits are used to reduce bandwidth. Credentials are stored in the local client credential
 store; they are not sent through MineScreen's multiplayer state.
 
+### Synchronized text boards
+
+The Synchronized Text Board and Animated Text Board are lightweight public-information devices.
+Right-click one to edit up to 512 characters, text/background colors, font size, animation and
+speed. Same-facing, adjacent boards of the same kind automatically join into one logical canvas;
+the deterministic master renders the complete text once and the other tiles do not duplicate it.
+The server synchronizes those parameters and one start game time; each client renders static
+wrapping, marquee, pulse, or warning-flash animation locally, so no text-frame video stream is sent.
+
+Text Boards and Traffic Displays are the two flat display families that support two readable sides.
+Their back can be disabled, mirror the front content, or use independently edited content. Ordinary
+VIDEO/WEB/VNC Screen blocks remain intentionally single-sided.
+
+Traffic Displays provide structured transit fields (service, destination, current/next stop, ETA,
+status and a template ID). `Station_Next` resolves a nearby or LCD-Studio-bound Create station,
+filters train types and displays Create's live departure predictions. `Station_Map` renders an RMP
+or declarative route map and highlights the current station and next destination. Boards associated
+with one Create station share a cached timetable snapshot instead of scanning per tile or frame.
+
+External traffic layouts use declarative JSON plus optional PNG artwork under
+`config/minescreen/traffic_templates/<template_id>/`. The importer accepts Rail Map Painter's native
+`RMP_*.json` projects as a simplified station/line layer, and MineScreen `.js` generators that are
+compiled once into bounded text/rectangle/line scenes. RMP remains the static map layer; MineScreen's
+current/next stop, ETA, status, multiplayer timing and carriage behavior remain the live layer.
+
+Imported JavaScript runs only in a disposable 64 MiB child JVM with class/file/network access denied,
+then the source is discarded. It is never run from a server, browser, world tick or renderer. See
+[Traffic templates](TRAFFIC_TEMPLATES.md) for the exact limits and the non-pixel-perfect RMP boundary.
+
+Multiplayer can synchronize validated `script_scene_v1` manifests by SHA-256. The server requests
+24 KiB chunks only for a missing hash and persists the bounded declaration in the world folder.
+JavaScript source, local paths, RMP projects, PNG sidecars and rendered frames are never uploaded or
+executed remotely.
+
+Traffic and carriage displays can also import an optional UTF-8 TXT notice overlay from the
+“Content & notice” page. The notice is drawn as a synchronized translucent strip over the existing
+template; it does not replace the route map, station board, ETA, or live train animation. Pages use
+`---` separators and may configure timing, transitions, alignment, and top/center/bottom placement.
+
+### Electric Light Board
+
+The Electric Light Board is a separate, single-sided LED/neon text device with a dark panel, cyan
+full-bright output, scanlines and synchronized static/marquee/pulse/alert animation. It joins only
+other Electric Light Boards, so it cannot accidentally merge with ordinary or animated Text Boards.
+
+### Ceiling carriage display
+
+The Ceiling Display is an equilateral-triangular-prism carriage display. Its two sloped faces can
+show linked or independent traffic/MEDIA content, while the mounting face stays blank. Segments only
+join along their selected horizontal axis, making the shape predictable in narrow vehicle interiors.
+It is powered by default and does not require a redstone cable. A separate 45-degree single-sided
+Door LCD joins only matching doorway panels and never merges with the 60-degree prism. In Traffic
+mode on a Create carriage, both forms read the owning train's live navigation destination. The
+traffic-only Carriage Arrival Information Strip is a horizontally joining, above-door layout that
+automatically shows the Create train name/type, consist length, terminal, next and upcoming stops,
+ETA, and remaining dwell time. Its terminal is inferred from ordered schedule predictions, with the
+manually configured destination retained as a fallback for wildcard destinations. An optional
+passenger notice (for example, a limited-express ticket requirement) is stored separately and is
+not overwritten by arrival state. Displays switch to an arriving/prepare-to-alight notice inside a
+configurable 10–120 second ETA window (10 seconds by default). Sloped-face WEB/VNC pointer mapping
+is still experimental.
+
 ## Using the controls
 
 | Action | Result |
@@ -82,6 +145,16 @@ store; they are not sent through MineScreen's multiplayer state.
 | Right-click Fixed Keyboard | Enter keyboard input mode. |
 | Hold the handheld Keyboard item | Route keyboard input to the screen while focused. |
 | Escape | Release keyboard focus or browser Pointer Lock. |
+| Right-click a Text Board | Open its server-validated text/style editor. |
+| Adjacent same-facing Text Boards | Automatically join into one synchronized text canvas. |
+| Right-click a Traffic Display | Edit structured transit fields and select a client template ID. |
+| Traffic editor “Content & notice” | Import or clear an optional dynamic TXT notice without changing the base template. |
+| Traffic editor “Quick setup” | Select Manual, `Station_Next`, or `Station_Map`; live modes can bind a Create station. |
+| Right-click the back of a Text/Traffic Display | Edit the independent back when two-sided mode is enabled. |
+| Shift + right-click a Ceiling Display | Configure either sloped face and choose traffic or MEDIA content. |
+| Shift + right-click a 45° Door LCD | Configure its single face; Traffic mode follows the assembled train's next stop. |
+| Right-click a Carriage Information Strip | Edit fallback route data and an optional passenger notice; the assembled train schedule is read automatically. |
+| Right-click an Electric Light Board | Edit its single-sided luminous text and animation. |
 
 When a browser requests Pointer Lock, MineScreen aims at the physical screen that contains the
 logical canvas center. This works across rotations, irregular layouts, gaps, and different screen
@@ -94,6 +167,23 @@ faces; it does not simply aim at the master block.
 - Host layouts include free panes, horizontal panorama, vertical panorama, and custom positions.
 - A missing or disabled tile stays empty; it does not render an opaque area in the air.
 - One host network can expose multiple regions, allowing different panes to play different content.
+- Ordinary Screen blocks are single-sided; only Text/Traffic Displays have optional front/back content.
+
+## Create carriages (experimental)
+
+MineScreen can render an adjacent same-plane screen group from Create's client-side contraption
+world. The carriage transform is supplied by Create while MineScreen keeps the existing VIDEO/WEB
+session and texture alive across assembly. Moving screens currently remain active while rendered,
+because virtual contraption redstone does not continuously tick like the normal world.
+
+With Create 6.0.9 or newer installed, MineScreen uses Create's public contraption transform API for the
+current world-space canvas bounds, screen audio source, and cable-connected carriage speakers.
+Visibility and Chromium window activity therefore follow the carriage instead of its assembly site.
+
+Moving same-plane screens now also accept crosshair clicks, wheel input, and the handheld Keyboard.
+The world ray is transformed into carriage-local coordinates and Pointer Lock converts the selected
+canvas center back to the carriage's current world position. Fixed Keyboards, carriage redstone,
+cross-face Computer networks, and stricter contraption-block occlusion remain future work.
 
 ## Multiplayer behavior
 
@@ -131,23 +221,43 @@ Missing artwork is ignored without a missing-texture placeholder.
 
 ## Known boundaries
 
-- WEB requires MCEF on the client.
-- Local video support is currently MP4-focused and has no audio track mixing.
+- MineScreen requires MCEF on each client; MCEF performs its own first-run CEF download.
+- Local video support is currently MP4-focused. The first audio stream is decoded to positional
+  48 kHz stereo; selecting or mixing multiple audio tracks is not supported.
 - VNC bandwidth depends heavily on desktop changes, compression, resolution, and FPS.
 - Client-side sources are not a server-side media relay.
+- Create carriage display configuration and moving pointer/handheld-keyboard interaction are
+  supported, but should be validated with the exact Create build and contraption used by a pack.
 
 ## Documentation
 
 - [Future roadmap](FUTURE.md)
 - [Developer and compatibility notes](PORTING.md)
+- [1.1.0 production-readiness report](docs/PRODUCTION_READINESS_1.1.0.md)
+- [Changelog](CHANGELOG.md)
+- [Traffic templates and Rail Map Toolkit PNG workflow](TRAFFIC_TEMPLATES.md)
+- [JR-East-inspired carriage LCD browser/server example](examples/traffic_templates/jr_east_lcd/)
+- [Linear dual-language carriage LCD browser/server example](examples/traffic_templates/linear_dual_language_lcd/)
 
 ## Special thanks
 
-Special thanks to Montoyo and the WebDisplays project for helping establish the idea of in-world
-web displays and for useful historical context. MineScreen Canvas is an independent 1.21.1
-NeoForge project, not a WebDisplays port or drop-in replacement, and its video, VNC, audio, cable,
-canvas, and peer features have their own implementation and behavior.
+- Montoyo and WebDisplays, for the historical in-world web-display concept and context;
+- CinemaMod/MCEF, for the off-screen Chromium integration used by WEB mode;
+- FFmpeg and the Bytedeco JavaCPP project, for media decoding and Java native bindings;
+- the NeoForge project, for the mod loader, APIs and tooling;
+- simibubi and the Create team, for the optional contraption transform API;
+- Rail Map Toolkit, for the external railway-map workflow targeted by MineScreen's PNG/template
+  import path.
+- jonhweider/TrainLCD, for product-design reference on localized station names, bounded station
+  windows, and linear carriage-LCD information hierarchy;
+- Mozilla Rhino, for the MPL-2.0 import-time JavaScript engine used in the isolated template worker.
+
+MineScreen Canvas is independent and is not a WebDisplays, Create, MCEF, or Rail Map Toolkit
+distribution. No Rail Map Toolkit project parser or third-party artwork is bundled unless its
+license and attribution are explicitly documented.
 
 ## License
 
 MineScreen code is distributed under the MIT License. See [LICENSE](LICENSE).
+Embedded third-party components retain their own licenses; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

@@ -7,10 +7,12 @@ import java.util.Set;
 import dev.minescreen.MineScreen;
 import dev.minescreen.MineScreenConfig;
 import dev.minescreen.ScreenGroup;
+import dev.minescreen.client.MovingScreenSpatialState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 
 /** Finds connected speakers without creating a second audio stream or copying decoded audio. */
@@ -21,23 +23,38 @@ public final class SpeakerLinkResolver {
     }
 
     static Emitter bestEmitter(ScreenGroup group) {
+        ScreenGroup movingLocalGroup = MovingScreenSpatialState.localGroup(group);
+        if (movingLocalGroup != null) {
+            group = movingLocalGroup;
+        }
         Minecraft minecraft = Minecraft.getInstance();
         ClientLevel level = minecraft.level;
         Vec3 listener = minecraft.player == null ? null : minecraft.player.getEyePosition();
-        Vec3 screenCenter = group.bounds().getCenter();
+        Vec3 screenCenter = MovingScreenSpatialState.center(group);
         double screenRange = MineScreenConfig.DEFAULT_SCREEN_SOUND_DISTANCE.get();
         Emitter best = emitter(screenCenter, screenRange, listener);
-        if (level == null || listener == null || !level.dimension().equals(group.dimension())) {
+        if (level == null || listener == null
+                || !level.dimension().equals(MovingScreenSpatialState.dimension(group))) {
             return best;
         }
 
+        Level topologyLevel = MovingScreenSpatialState.virtualLevel(group);
+        boolean moving = topologyLevel != null;
+        if (!moving) {
+            topologyLevel = level;
+        }
+        return connectedEmitter(topologyLevel, group, listener, best, moving);
+    }
+
+    private static Emitter connectedEmitter(Level level, ScreenGroup group, Vec3 listener,
+            Emitter best, boolean moving) {
         ArrayDeque<BlockPos> queue = new ArrayDeque<>();
         Set<BlockPos> visited = new HashSet<>();
         for (BlockPos tile : group.tiles()) {
             for (Direction direction : Direction.values()) {
                 BlockPos next = tile.relative(direction);
                 if (level.getBlockState(next).is(MineScreen.SPEAKER_BLOCK.get())) {
-                    best = better(best, emitter(Vec3.atCenterOf(next),
+                    best = better(best, emitter(emitterPosition(group, next, moving),
                             MineScreenConfig.SPEAKER_SOUND_DISTANCE.get(), listener));
                 } else if (level.getBlockState(next).is(MineScreen.SCREEN_CABLE_BLOCK.get())
                         && visited.add(next.immutable())) {
@@ -50,7 +67,7 @@ public final class SpeakerLinkResolver {
             for (Direction direction : Direction.values()) {
                 BlockPos next = cable.relative(direction);
                 if (level.getBlockState(next).is(MineScreen.SPEAKER_BLOCK.get())) {
-                    best = better(best, emitter(Vec3.atCenterOf(next),
+                    best = better(best, emitter(emitterPosition(group, next, moving),
                             MineScreenConfig.SPEAKER_SOUND_DISTANCE.get(), listener));
                 } else if (level.getBlockState(next).is(MineScreen.SCREEN_CABLE_BLOCK.get())
                         && visited.add(next.immutable())) {
@@ -59,6 +76,11 @@ public final class SpeakerLinkResolver {
             }
         }
         return best;
+    }
+
+    private static Vec3 emitterPosition(ScreenGroup group, BlockPos pos, boolean moving) {
+        Vec3 local = Vec3.atCenterOf(pos);
+        return moving ? MovingScreenSpatialState.toWorld(group, local) : local;
     }
 
     /** Listener-relative gain shared by FFmpeg/OpenAL and off-screen Chromium media. */

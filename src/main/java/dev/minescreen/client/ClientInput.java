@@ -10,16 +10,19 @@ import dev.minescreen.client.content.ClientScreenProfile;
 import dev.minescreen.client.content.ScreenContentType;
 import dev.minescreen.client.content.ScreenRegionLayout;
 import dev.minescreen.client.content.ScreenRotation;
+import dev.minescreen.client.compat.MovingStructureCompat;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
@@ -201,10 +204,106 @@ public final class ClientInput {
         }
     }
 
-    @SubscribeEvent
+    @SubscribeEvent(priority = EventPriority.HIGHEST, receiveCanceled = true)
     public static void onInteraction(InputEvent.InteractionKeyMappingTriggered event) {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.screen != null) {
+            return;
+        }
+        if (event.isUseItem()) {
+            MovingStructureCompat.MovingDisplayHit movingHit =
+                    MovingStructureCompat.findDisplayHit();
+            if (movingHit != null) {
+                if (movingHit.blockEntity()
+                        instanceof dev.minescreen.CeilingDisplayBlockEntity display) {
+                    openMovingDisplayEditor(minecraft, event, movingHit, display);
+                    return;
+                }
+                if (movingHit.blockEntity() instanceof dev.minescreen.TextDisplayBlockEntity display
+                        && display.isTraffic()) {
+                    if (minecraft.player != null && display.owner() != null
+                            && !display.owner().equals(minecraft.player.getUUID())
+                            && !minecraft.player.hasPermissions(2)) {
+                        minecraft.player.displayClientMessage(Component.translatable(
+                                "screen.minescreen.text_display.no_permission"), true);
+                    } else {
+                        setActive(null);
+                        net.minecraft.core.Direction facing = display.getBlockState()
+                                .getValue(dev.minescreen.TextDisplayBlock.FACING);
+                        boolean backSide = display.backMode()
+                                == dev.minescreen.DisplayBackMode.INDEPENDENT
+                                && movingHit.direction() == facing.getOpposite();
+                        minecraft.setScreen(new TrafficDisplayEditorScreen(display, backSide,
+                                movingHit.entityId()));
+                    }
+                    event.setCanceled(true);
+                    event.setSwingHand(false);
+                    return;
+                }
+            }
+        }
+        if (event.isUseItem() && minecraft.hitResult instanceof BlockHitResult blockHit
+                && minecraft.level != null
+                && minecraft.level.getBlockEntity(blockHit.getBlockPos())
+                        instanceof dev.minescreen.CeilingDisplayBlockEntity display) {
+            if (minecraft.player != null && display.owner() != null
+                    && !display.owner().equals(minecraft.player.getUUID())
+                    && !minecraft.player.hasPermissions(2)) {
+                minecraft.player.displayClientMessage(Component.translatable(
+                        "screen.minescreen.text_display.no_permission"), true);
+            } else {
+                if (isSingleSidedCarriageDisplay(display.getBlockState())) {
+                    dev.minescreen.DoorLcdGroup doorGroup =
+                            dev.minescreen.DoorLcdGroupResolver.resolve(minecraft.level,
+                                    blockHit.getBlockPos());
+                    if (doorGroup != null) {
+                        minecraft.setScreen(new CeilingDisplayEditorScreen(display, doorGroup));
+                    }
+                } else {
+                    dev.minescreen.CeilingDisplayGroup ceilingGroup =
+                            dev.minescreen.CeilingDisplayGroupResolver.resolve(minecraft.level,
+                                    blockHit.getBlockPos());
+                    if (ceilingGroup == null) {
+                        event.setCanceled(true);
+                        event.setSwingHand(false);
+                        return;
+                    }
+                    net.minecraft.core.Direction.Axis axis = display.getBlockState()
+                            .getValue(dev.minescreen.CeilingDisplayBlock.AXIS);
+                    Vec3 local = blockHit.getLocation().subtract(
+                            Vec3.atLowerCornerOf(blockHit.getBlockPos()));
+                    double cross = axis == net.minecraft.core.Direction.Axis.X ? local.z : local.x;
+                    minecraft.setScreen(new CeilingDisplayEditorScreen(display, ceilingGroup,
+                            cross < 0.5D ? 0 : 1));
+                }
+            }
+            event.setCanceled(true);
+            event.setSwingHand(false);
+            return;
+        }
+        if (event.isUseItem() && minecraft.hitResult instanceof BlockHitResult blockHit
+                && minecraft.level != null
+                && minecraft.level.getBlockEntity(blockHit.getBlockPos())
+                        instanceof dev.minescreen.TextDisplayBlockEntity display) {
+            if (minecraft.player != null && display.owner() != null
+                    && !display.owner().equals(minecraft.player.getUUID())
+                    && !minecraft.player.hasPermissions(2)) {
+                minecraft.player.displayClientMessage(Component.translatable(
+                        "screen.minescreen.text_display.no_permission"), true);
+                event.setCanceled(true);
+                event.setSwingHand(false);
+                return;
+            }
+            setActive(null);
+            net.minecraft.core.Direction boardFacing = display.getBlockState()
+                    .getValue(dev.minescreen.TextDisplayBlock.FACING);
+            boolean backSide = display.backMode() == dev.minescreen.DisplayBackMode.INDEPENDENT
+                    && blockHit.getDirection() == boardFacing.getOpposite();
+            minecraft.setScreen(display.isTraffic()
+                    ? new TrafficDisplayEditorScreen(display, backSide)
+                    : new TextDisplayEditorScreen(display, backSide));
+            event.setCanceled(true);
+            event.setSwingHand(false);
             return;
         }
         if (event.isUseItem() && minecraft.hitResult instanceof BlockHitResult blockHit
@@ -250,9 +349,10 @@ public final class ClientInput {
         }
         if (event.isUseItem() && (Screen.hasShiftDown() || holdingScreenConfigurator())) {
             ScreenRaycast.ScreenHit hit = ScreenRaycast.raycastNow();
-            ScreenGroup group = hit == null ? null : ScreenGroupManager.group(hit.groupId());
+            ScreenGroup group = hit == null ? null : group(hit.groupId());
             if (group != null) {
-                if (!ScreenPowerManager.isPowered(group)) {
+                if (!MovingScreenSpatialState.isMoving(group)
+                        && !ScreenPowerManager.isPowered(group)) {
                     minecraft.player.displayClientMessage(
                             Component.translatable("screen.minescreen.power.required"), true);
                     event.setCanceled(true);
@@ -271,6 +371,47 @@ public final class ClientInput {
             event.setCanceled(true);
             event.setSwingHand(false);
         }
+    }
+
+    private static void openMovingDisplayEditor(Minecraft minecraft,
+            InputEvent.InteractionKeyMappingTriggered event,
+            MovingStructureCompat.MovingDisplayHit hit,
+            dev.minescreen.CeilingDisplayBlockEntity display) {
+        if (minecraft.player != null && display.owner() != null
+                && !display.owner().equals(minecraft.player.getUUID())
+                && !minecraft.player.hasPermissions(2)) {
+            minecraft.player.displayClientMessage(Component.translatable(
+                    "screen.minescreen.text_display.no_permission"), true);
+        } else if (isSingleSidedCarriageDisplay(display.getBlockState())) {
+            dev.minescreen.DoorLcdGroup group = dev.minescreen.DoorLcdGroupResolver.resolve(
+                    hit.virtualLevel(), hit.localPos());
+            if (group != null) {
+                setActive(null);
+                minecraft.setScreen(new CeilingDisplayEditorScreen(display, group,
+                        hit.entityId()));
+            }
+        } else {
+            dev.minescreen.CeilingDisplayGroup group =
+                    dev.minescreen.CeilingDisplayGroupResolver.resolve(
+                            hit.virtualLevel(), hit.localPos());
+            if (group != null) {
+                net.minecraft.core.Direction.Axis axis = display.getBlockState()
+                        .getValue(dev.minescreen.CeilingDisplayBlock.AXIS);
+                Vec3 local = hit.localLocation().subtract(Vec3.atLowerCornerOf(hit.localPos()));
+                double cross = axis == net.minecraft.core.Direction.Axis.X ? local.z : local.x;
+                setActive(null);
+                minecraft.setScreen(new CeilingDisplayEditorScreen(display, group,
+                        cross < 0.5D ? 0 : 1, hit.entityId()));
+            }
+        }
+        event.setCanceled(true);
+        event.setSwingHand(false);
+    }
+
+    private static boolean isSingleSidedCarriageDisplay(
+            net.minecraft.world.level.block.state.BlockState state) {
+        return state.is(MineScreen.DOOR_LCD_BLOCK.get())
+                || state.is(MineScreen.CARRIAGE_INFO_DISPLAY_BLOCK.get());
     }
 
     private static boolean holdingScreenConfigurator() {
@@ -327,11 +468,13 @@ public final class ClientInput {
         if (hit == null) {
             return null;
         }
-        ScreenGroup group = ScreenGroupManager.group(hit.groupId());
-        if (group == null || !ScreenPowerManager.isPowered(group)) {
+        ScreenGroup group = group(hit.groupId());
+        if (group == null || !usable(group)) {
             return null;
         }
-        ScreenContentManager.PanoramaRender joined = ScreenContentManager.panoramaFor(group);
+        boolean moving = MovingScreenSpatialState.isMoving(group);
+        ScreenContentManager.PanoramaRender joined = moving ? null
+                : ScreenContentManager.panoramaFor(group);
         if (joined != null) {
             ClientScreenProfile root = ScreenContentManager.profile(joined.network().rootGroupId());
             if (root.contentType != ScreenContentType.WEB
@@ -356,7 +499,11 @@ public final class ClientInput {
         if (profile.contentType == ScreenContentType.VNC && profile.vncReadOnly) {
             return null;
         }
-        ScreenContentManager.sourceFor(group, hit.regionId());
+        if (moving) {
+            ScreenContentManager.sourceForMoving(group, hit.regionId());
+        } else {
+            ScreenContentManager.sourceFor(group, hit.regionId());
+        }
         if (!(ScreenContentManager.session(group.groupId(), hit.regionId())
                 instanceof ScreenInputTarget target)) {
             return null;
@@ -431,12 +578,14 @@ public final class ClientInput {
         // resumes.
         ScreenGroup group = fixedKeyboardGroup != null
                 ? fixedKeyboardGroup
-                : active == null ? null : ScreenGroupManager.group(active.groupId());
+                : active == null ? null : group(active.groupId());
         if (group == null) {
             return;
         }
         int regionId = fixedKeyboardGroup != null || active == null ? 0 : active.regionId();
-        Vec3 target = logicalCentreTarget(minecraft.level, group, regionId);
+        Level topologyLevel = MovingScreenSpatialState.virtualLevel(group);
+        Vec3 target = logicalCentreTarget(topologyLevel == null ? minecraft.level : topologyLevel,
+                group, regionId);
         if (target == null) {
             return;
         }
@@ -457,11 +606,11 @@ public final class ClientInput {
         recenterOnPointerLock = false;
     }
 
-    private static Vec3 logicalCentreTarget(ClientLevel level, ScreenGroup activeGroup,
+    private static Vec3 logicalCentreTarget(Level level, ScreenGroup activeGroup,
             int regionId) {
         AimCandidate best = null;
-        ScreenHostNetworkManager.HostNetwork network =
-                ScreenHostNetworkManager.networkFor(activeGroup);
+        ScreenHostNetworkManager.HostNetwork network = level instanceof ClientLevel
+                ? ScreenHostNetworkManager.networkFor(activeGroup) : null;
         if (network != null && network.panoramic()) {
             // The simulated image spans all cable-connected physical surfaces. Search the entire
             // host canvas so its centre may legitimately resolve to a different face/group.
@@ -497,7 +646,7 @@ public final class ClientInput {
         return best == null ? null : best.worldPoint();
     }
 
-    private static AimCandidate nearestDisplayedPoint(ClientLevel level,
+    private static AimCandidate nearestDisplayedPoint(Level level,
             ScreenHostNetworkManager.Surface surface, ClientScreenProfile profile,
             AimCandidate currentBest) {
         ScreenGroup group = surface.group();
@@ -618,11 +767,13 @@ public final class ClientInput {
                 physicalU = clamp(physicalU, 0.0001D, 0.9999D);
                 physicalV = clamp(physicalV, 0.0001D, 0.9999D);
             }
-            return ScreenGeometry.origin(group.origin(), group.facing())
+            Vec3 localPoint = ScreenGeometry.origin(group.origin(), group.facing())
                     .add(ScreenGeometry.right(group.facing())
                             .scale(physicalU * group.columns()))
                     .add(ScreenGeometry.up(group.facing())
                             .scale((1.0D - physicalV) * group.rows()));
+            return MovingScreenSpatialState.isMoving(group)
+                    ? MovingScreenSpatialState.toWorld(group, localPoint) : localPoint;
         }
     }
 
@@ -633,8 +784,9 @@ public final class ClientInput {
 
     private static boolean canDismantle(ActiveTarget target) {
         Minecraft minecraft = Minecraft.getInstance();
-        ScreenGroup group = ScreenGroupManager.group(target.groupId());
+        ScreenGroup group = group(target.groupId());
         return minecraft.player != null && minecraft.level != null && group != null
+                && !MovingScreenSpatialState.isMoving(group)
                 && minecraft.player.getMainHandItem().isCorrectToolForDrops(
                         minecraft.level.getBlockState(group.master()));
     }
@@ -695,7 +847,9 @@ public final class ClientInput {
     }
 
     private static ScreenInputTarget inputTarget(ScreenGroup group) {
-        ScreenContentManager.PanoramaRender joined = ScreenContentManager.panoramaFor(group);
+        boolean moving = MovingScreenSpatialState.isMoving(group);
+        ScreenContentManager.PanoramaRender joined = moving ? null
+                : ScreenContentManager.panoramaFor(group);
         if (joined != null) {
             ClientScreenProfile profile = ScreenContentManager.profile(joined.network().rootGroupId());
             if (profile.contentType != ScreenContentType.WEB
@@ -711,9 +865,24 @@ public final class ClientInput {
                 && (profile.contentType != ScreenContentType.VNC || profile.vncReadOnly)) {
             return null;
         }
-        ScreenContentManager.sourceFor(group);
+        if (moving) {
+            ScreenContentManager.sourceForMoving(group);
+        } else {
+            ScreenContentManager.sourceFor(group);
+        }
         return ScreenContentManager.session(group.groupId()) instanceof ScreenInputTarget target
                 ? target : null;
+    }
+
+    private static ScreenGroup group(java.util.UUID groupId) {
+        ScreenGroup stationary = ScreenGroupManager.group(groupId);
+        return stationary == null ? ScreenContentManager.movingGroup(groupId) : stationary;
+    }
+
+    private static boolean usable(ScreenGroup group) {
+        // Create contraptions intentionally stay active in this phase; virtual redstone support is
+        // deferred because its signals do not tick like ordinary world redstone.
+        return MovingScreenSpatialState.isMoving(group) || ScreenPowerManager.isPowered(group);
     }
 
     private static void exitKeyboardMode() {
