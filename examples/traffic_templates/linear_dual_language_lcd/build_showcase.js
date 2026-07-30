@@ -3,9 +3,15 @@
 var fs = require("fs");
 var path = require("path");
 var root = __dirname;
-var template = fs.readFileSync(path.join(root, "showcase.template.html"), "utf8");
-var generator = fs.readFileSync(path.join(root, "linear_lcd_generator.js"), "utf8");
-var runtime = fs.readFileSync(path.join(root, "showcase.runtime.js"), "utf8");
+function normalizeNewlines(value) {
+    return value.replace(/\r\n?/g, "\n");
+}
+var template = normalizeNewlines(
+    fs.readFileSync(path.join(root, "showcase.template.html"), "utf8"));
+var generator = normalizeNewlines(
+    fs.readFileSync(path.join(root, "linear_lcd_generator.js"), "utf8"));
+var runtime = normalizeNewlines(
+    fs.readFileSync(path.join(root, "showcase.runtime.js"), "utf8"));
 var marker = "/*__MINESCREEN_GENERATOR__*/";
 if (template.indexOf(marker) < 0) throw new Error("Showcase generator marker is missing");
 if (generator.indexOf("</script") >= 0) throw new Error("Generator cannot be embedded safely");

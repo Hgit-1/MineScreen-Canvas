@@ -4,6 +4,9 @@ var childProcess = require("child_process");
 var fs = require("fs");
 var path = require("path");
 var root = __dirname;
+function normalizeNewlines(value) {
+    return value.replace(/\r\n?/g, "\n");
+}
 
 ["linear_lcd_generator.js", "rmp_reader.js", "showcase.runtime.js", "simulation_test.js",
     "stress_test.js", "linear_lcd_showcase.js"].forEach(function (name) {
@@ -31,10 +34,12 @@ var generator = fs.readFileSync(path.join(root, "linear_lcd_generator.js"), "utf
 var runtime = fs.readFileSync(path.join(root, "showcase.runtime.js"), "utf8");
 var showcase = fs.readFileSync(path.join(root, "showcase.html"), "utf8");
 var bundle = fs.readFileSync(path.join(root, "linear_lcd_showcase.js"), "utf8");
-if (showcase !== template.replace(marker, generator)) {
+if (normalizeNewlines(showcase)
+        !== normalizeNewlines(template.replace(marker, generator))) {
     throw new Error("showcase.html is stale; run node build_showcase.js");
 }
-if (bundle !== generator + "\n" + runtime) {
+if (normalizeNewlines(bundle)
+        !== normalizeNewlines(generator + "\n" + runtime)) {
     throw new Error("linear_lcd_showcase.js is stale; run node build_showcase.js");
 }
 
