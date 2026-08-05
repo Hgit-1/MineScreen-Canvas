@@ -130,14 +130,6 @@ tasks.named('processResources', ProcessResources).configure {
 }
 
 configurations {
-    // JavaCPP API and Windows natives must share one runtime class-path root. NeoForge Jar-in-Jar
-    // metadata has no classifier field, so embedding the base and windows-x86_64 artifacts as two
-    // jars gives them the same identifier and can cause one half to be discarded at launch.
-    ffmpegEmbed {
-        canBeConsumed = false
-        canBeResolved = true
-        transitive = false
-    }
     scriptEmbed {
         canBeConsumed = false
         canBeResolved = true
@@ -189,29 +181,12 @@ def extractPonderCompileJar = tasks.register('extractPonderCompileJar') {
 def ponderCompileFiles = files(ponderCompileJar)
 ponderCompileFiles.builtBy(extractPonderCompileJar)
 
-def ffmpegNativePlatforms = [
-        'windows-x86_64',
-        'linux-x86_64',
-        'linux-arm64',
-        'macosx-x86_64',
-        'macosx-arm64'
-]
-
 dependencies {
-    // Keep one universal desktop distribution so a modpack does not need a platform-specific
-    // MineScreen file. JavaCPP selects only the matching native directory at runtime.
-    implementation('org.bytedeco:ffmpeg-platform:7.1-1.5.11') { transitive = false }
-    implementation 'org.bytedeco:ffmpeg:7.1-1.5.11'
-    ffmpegEmbed 'org.bytedeco:ffmpeg:7.1-1.5.11'
-    ffmpegEmbed 'org.bytedeco:javacpp:1.5.11'
-    ffmpegNativePlatforms.each { platform ->
-        runtimeOnly "org.bytedeco:ffmpeg:7.1-1.5.11:${platform}"
-        runtimeOnly "org.bytedeco:javacpp:1.5.11:${platform}"
-        // Merge API and classifier resources into one classpath root. NeoForge Jar-in-Jar metadata
-        // has no classifier field and would otherwise collapse same-version native artifacts.
-        ffmpegEmbed "org.bytedeco:ffmpeg:7.1-1.5.11:${platform}"
-        ffmpegEmbed "org.bytedeco:javacpp:1.5.11:${platform}"
-    }
+    // Only compile the legacy JavaCPP decoder sources. MineScreen no longer packages JavaCPP or
+    // any FFmpeg native library: a platform-specific, SHA-256-pinned runtime is downloaded on
+    // demand and executed through ProcessBuilder, which keeps the universal mod jar small.
+    compileOnly 'org.bytedeco:ffmpeg:7.1-1.5.11'
+    compileOnly 'org.bytedeco:javacpp:1.5.11'
 
     // Rhino is a compact, pure-Java import-time engine. MineScreen exposes no Java objects to the
     // template scope, denies all class access, and enforces instruction/time/output budgets. The
@@ -243,13 +218,6 @@ tasks.named('jar', Jar).configure {
                 'Implementation-Title': mod_name,
                 'Implementation-Version': mod_version
         )
-    }
-    from({ configurations.ffmpegEmbed.collect { zipTree(it) } }) {
-        exclude 'META-INF/MANIFEST.MF'
-        exclude 'META-INF/*.SF'
-        exclude 'META-INF/*.RSA'
-        exclude 'META-INF/*.DSA'
-        exclude 'module-info.class'
     }
     from('LICENSE') {
         into 'META-INF/licenses'
@@ -363,14 +331,6 @@ tasks.register('videoDecoderProbe', JavaExec) {
     }
 }
 
-tasks.register('packagedFfmpegProbe', JavaExec) {
-    dependsOn tasks.named('jar'), testClasses
-    // Deliberately exclude Gradle's FFmpeg/runtime configurations. The wrapper classes and native
-    // DLLs must be discovered from the final MineScreen jar itself, matching an installed client.
-    classpath = files(sourceSets.test.output, tasks.named('jar').flatMap { it.archiveFile })
-    mainClass = 'dev.minescreen.client.video.PackagedFfmpegProbe'
-}
-
 tasks.register('externalFfmpegProbe', JavaExec) {
     dependsOn testClasses
     classpath = sourceSets.test.runtimeClasspath + clientProbeMinecraftClasspath + files(
@@ -434,6 +394,12 @@ tasks.register('platformFingerprintTest', JavaExec) {
     mainClass = 'dev.minescreen.client.compat.PlatformFingerprintTestHarness'
 }
 
+tasks.register('ffmpegRuntimeSecurityTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.minescreen.client.compat.FfmpegRuntimeSecurityTestHarness'
+}
+
 tasks.register('trainEtaEstimatorTest', JavaExec) {
     dependsOn testClasses
     classpath = sourceSets.test.runtimeClasspath
@@ -459,11 +425,11 @@ tasks.named('check').configure {
     dependsOn tasks.named('rfbLoopbackTest')
     dependsOn tasks.named('responsiveLayoutTest')
     dependsOn tasks.named('profileSourceTest')
-    dependsOn tasks.named('packagedFfmpegProbe')
     dependsOn tasks.named('trafficImportTest')
     dependsOn tasks.named('trafficTemplateSyncTest')
     dependsOn tasks.named('securityPolicyTest')
     dependsOn tasks.named('platformFingerprintTest')
+    dependsOn tasks.named('ffmpegRuntimeSecurityTest')
     dependsOn tasks.named('trainEtaEstimatorTest')
     dependsOn tasks.named('releaseIntegrityTest')
     dependsOn tasks.named('lcdStudioSimulationTest')

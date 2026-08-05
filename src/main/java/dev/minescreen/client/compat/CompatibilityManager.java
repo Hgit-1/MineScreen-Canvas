@@ -42,11 +42,17 @@ public final class CompatibilityManager {
     }
 
     public static synchronized Optional<Path> externalFfmpeg() {
+        Optional<FfmpegRuntimeManager.ProgramPair> downloaded =
+                FfmpegRuntimeManager.installedRuntime();
+        if (downloaded.isPresent()) return Optional.of(downloaded.get().ffmpeg());
         probe(Capability.EXTERNAL_FFMPEG);
         return Optional.ofNullable(ffmpegProgram).map(ExternalProgramDetector.Program::path);
     }
 
     public static synchronized Optional<Path> externalFfprobe() {
+        Optional<FfmpegRuntimeManager.ProgramPair> downloaded =
+                FfmpegRuntimeManager.installedRuntime();
+        if (downloaded.isPresent()) return Optional.of(downloaded.get().ffprobe());
         probe(Capability.EXTERNAL_FFMPEG);
         return Optional.ofNullable(ffprobeProgram).map(ExternalProgramDetector.Program::path);
     }
@@ -57,8 +63,8 @@ public final class CompatibilityManager {
     }
 
     public static synchronized CapabilityResult selectedVideo() {
-        CapabilityResult embedded = probe(Capability.EMBEDDED_FFMPEG);
-        return embedded.available() ? embedded : probe(Capability.EXTERNAL_FFMPEG);
+        CapabilityResult downloaded = probe(Capability.DOWNLOADED_FFMPEG);
+        return downloaded.available() ? downloaded : probe(Capability.EXTERNAL_FFMPEG);
     }
 
     public static synchronized String diagnostics() {
@@ -97,9 +103,9 @@ public final class CompatibilityManager {
             case EXTERNAL_BROWSER -> coreOnly
                     ? CapabilityResult.unavailable(capability, "core-only mode")
                     : probeBrowserProgram(capability);
-            case EMBEDDED_FFMPEG -> coreOnly
+            case DOWNLOADED_FFMPEG -> coreOnly
                     ? CapabilityResult.unavailable(capability, "core-only mode")
-                    : probeEmbeddedFfmpeg(capability);
+                    : probeDownloadedFfmpeg(capability);
             case EXTERNAL_FFMPEG -> coreOnly
                     ? CapabilityResult.unavailable(capability, "core-only mode")
                     : probeFfmpegProgram(capability);
@@ -122,20 +128,24 @@ public final class CompatibilityManager {
         }
     }
 
-    private static CapabilityResult probeEmbeddedFfmpeg(Capability capability) {
-        if (!supportsEmbeddedFfmpeg(platform)) {
-            return CapabilityResult.unavailable(capability, "no bundled native library for platform");
+    private static CapabilityResult probeDownloadedFfmpeg(Capability capability) {
+        Optional<FfmpegRuntimeManager.ProgramPair> runtime =
+                FfmpegRuntimeManager.installedRuntime();
+        if (runtime.isPresent()) {
+            return CapabilityResult.available(capability, BackendKind.DOWNLOADED_FFMPEG);
         }
-        try {
-            // This is the only deliberate native initialization probe and is never reached on an
-            // unsupported platform. Its failure is cached for the rest of the client session.
-            Class.forName("org.bytedeco.ffmpeg.global.avutil", true,
-                    CompatibilityManager.class.getClassLoader());
-            return CapabilityResult.available(capability, BackendKind.JAVACPP_FFMPEG);
-        } catch (Throwable failure) {
-            return CapabilityResult.unavailable(capability, failure.getClass().getSimpleName()
-                    + (failure.getMessage() == null ? "" : ": " + failure.getMessage()));
+        // Respect an explicitly configured or already installed system pair. Do not start a
+        // 20–25 MiB download when a working local FFmpeg can satisfy VIDEO immediately.
+        CapabilityResult system = probeFfmpegProgram(Capability.EXTERNAL_FFMPEG);
+        if (system.available()) {
+            return CapabilityResult.unavailable(capability,
+                    "a working system FFmpeg is already available");
         }
+        FfmpegRuntimeManager.ensureInstalledAsync();
+        FfmpegRuntimeManager.Snapshot state = FfmpegRuntimeManager.snapshot();
+        String reason = state.state().active() ? "secure FFmpeg download is in progress"
+                : state.error().isBlank() ? "FFmpeg runtime is not installed" : state.error();
+        return CapabilityResult.unavailable(capability, reason);
     }
 
     static boolean supportsMcefPlatform(PlatformFingerprint fingerprint) {
@@ -151,19 +161,8 @@ public final class CompatibilityManager {
         return architecture && operatingSystem;
     }
 
-    static boolean supportsEmbeddedFfmpeg(PlatformFingerprint fingerprint) {
-        if (!fingerprint.desktopLike()) {
-            return false;
-        }
-        return switch (fingerprint.os()) {
-            case WINDOWS -> fingerprint.windowsAtLeast(10)
-                    && fingerprint.architecture() == PlatformFingerprint.CpuArchitecture.X86_64;
-            case LINUX -> fingerprint.architecture() == PlatformFingerprint.CpuArchitecture.X86_64
-                    || fingerprint.architecture() == PlatformFingerprint.CpuArchitecture.ARM64;
-            case MACOS -> fingerprint.architecture() == PlatformFingerprint.CpuArchitecture.X86_64
-                    || fingerprint.architecture() == PlatformFingerprint.CpuArchitecture.ARM64;
-            default -> false;
-        };
+    static boolean supportsDownloadedFfmpeg(PlatformFingerprint fingerprint) {
+        return FfmpegRuntimeManager.specFor(fingerprint).isPresent();
     }
 
     private static CapabilityResult probeBrowserProgram(Capability capability) {

@@ -221,7 +221,6 @@ public final class ReleaseIntegrityTestHarness {
                     "META-INF/neoforge.mods.toml",
                     "minescreen.mixins.json",
                     "minescreen.png",
-                    "org/bytedeco/ffmpeg/global/avformat.class",
                     "META-INF/minescreen/script/rhino-1.9.1.jar",
                     "META-INF/licenses/minescreen-MIT.txt",
                     "META-INF/THIRD_PARTY_NOTICES.md",
@@ -230,16 +229,9 @@ public final class ReleaseIntegrityTestHarness {
                     "META-INF/licenses/ffmpeg-LGPL-2.1.txt")) {
                 require(names.contains(required), "missing archive entry: " + required);
             }
-            for (String platform : List.of(
-                    "windows-x86_64", "linux-x86_64", "linux-arm64",
-                    "macosx-x86_64", "macosx-arm64")) {
-                require(names.stream().anyMatch(name -> name.startsWith(
-                                "org/bytedeco/ffmpeg/" + platform + "/")),
-                        "missing FFmpeg native platform: " + platform);
-                require(names.stream().anyMatch(name -> name.startsWith(
-                                "org/bytedeco/javacpp/" + platform + "/")),
-                        "missing JavaCPP native platform: " + platform);
-            }
+            require(names.stream().noneMatch(name -> name.startsWith("org/bytedeco/ffmpeg/")
+                            || name.startsWith("org/bytedeco/javacpp/")),
+                    "FFmpeg/JavaCPP must not be bundled in the universal MineScreen jar");
             ZipEntry metadataEntry = zip.getEntry("META-INF/neoforge.mods.toml");
             String metadata;
             try (InputStream input = zip.getInputStream(metadataEntry)) {

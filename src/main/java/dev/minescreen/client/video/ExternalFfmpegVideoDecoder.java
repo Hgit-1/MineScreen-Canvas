@@ -16,6 +16,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 
 import com.mojang.blaze3d.platform.NativeImage;
+import dev.minescreen.client.compat.FfmpegProcessEnvironment;
 import org.lwjgl.system.MemoryUtil;
 
 /**
@@ -188,7 +189,8 @@ final class ExternalFfmpegVideoDecoder implements AutoCloseable {
             if (!running || restartRequest.get().sequence() != commandSequence) {
                 return DecodeResult.RESTART;
             }
-            current = new ProcessBuilder(command).start();
+            current = FfmpegProcessEnvironment.configure(new ProcessBuilder(command), ffmpeg)
+                    .start();
             process = current;
         }
         StringBuilder errors = new StringBuilder();
@@ -263,9 +265,10 @@ final class ExternalFfmpegVideoDecoder implements AutoCloseable {
     private long probeDuration() {
         Process probe = null;
         try {
-            probe = new ProcessBuilder(List.of(ffprobe.toString(), "-v", "error",
-                    "-show_entries", "format=duration", "-of", "default=nw=1:nk=1",
-                    source.ffmpegInput())).redirectErrorStream(true).start();
+            probe = FfmpegProcessEnvironment.configure(new ProcessBuilder(List.of(
+                    ffprobe.toString(), "-v", "error", "-show_entries", "format=duration",
+                    "-of", "default=nw=1:nk=1", source.ffmpegInput()))
+                    .redirectErrorStream(true), ffprobe).start();
             if (!probe.waitFor(8L, TimeUnit.SECONDS)) {
                 probe.destroyForcibly();
                 return 0L;

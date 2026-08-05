@@ -26,6 +26,22 @@ public final class MineScreenClientConfig {
             .comment("Optional absolute path to ffprobe. When blank, MineScreen looks beside ffmpeg "
                     + "and then in explicit PATH entries.")
             .define("external_ffprobe_path", "", MineScreenClientConfig::validOptionalPath);
+    public static final ModConfigSpec.BooleanValue AUTO_DOWNLOAD_FFMPEG_RUNTIME = BUILDER
+            .comment("Prepare the matching FFmpeg runtime after the main menu appears. Downloads use only "
+                    + "built-in HTTPS hosts, normal JVM certificate/hostname validation, private-IP "
+                    + "rejection and a release-pinned SHA-256 hash. Disable this to require a "
+                    + "manually selected ffmpeg/ffprobe pair.")
+            .define("auto_download_ffmpeg_runtime", true);
+    public static final ModConfigSpec.IntValue ANDROID_VIDEO_MAX_WIDTH = BUILDER
+            .comment("Default VIDEO decode width cap for Pojav, FCL, ZL2 and other Android launchers. "
+                    + "Height follows the screen aspect ratio.")
+            .defineInRange("android_video_max_width", 854, 320, 1920);
+    public static final ModConfigSpec.IntValue ANDROID_VIDEO_MAX_FPS = BUILDER
+            .comment("VIDEO frame-rate cap used on Android launchers to reduce heat and memory use.")
+            .defineInRange("android_video_max_fps", 15, 5, 30);
+    public static final ModConfigSpec.IntValue ANDROID_VIDEO_FAR_FPS = BUILDER
+            .comment("VIDEO frame-rate cap for distant screens on Android launchers.")
+            .defineInRange("android_video_far_fps", 5, 1, 15);
     public static final ModConfigSpec.IntValue EXTERNAL_WEB_MAX_WIDTH = BUILDER
             .comment("Maximum compatibility-browser screencast width.")
             .defineInRange("external_web_max_width", 1280, 320, 3840);

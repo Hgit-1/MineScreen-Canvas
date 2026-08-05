@@ -4,7 +4,7 @@ public enum BackendKind {
     CORE,
     MCEF,
     EXTERNAL_CHROMIUM,
-    JAVACPP_FFMPEG,
+    DOWNLOADED_FFMPEG,
     SYSTEM_FFMPEG,
     PURE_JAVA_VNC,
     NONE
