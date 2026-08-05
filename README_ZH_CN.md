@@ -19,14 +19,16 @@ IDLE 模式检查屏幕方向、拼合关系和画面位置。
 ## 安装
 
 1. 安装 Minecraft Java 1.21.1 和 NeoForge 21.1.219。
-2. 将 `minescreen-1.2.0.jar` 放入客户端 `mods` 文件夹。
+2. 将 `minescreen-1.2.1.jar` 放入客户端 `mods` 文件夹。
 3. 如需完整 WEB 功能，在客户端安装官方 MCEF NeoForge 模组 `2.1.6-1.21.1`。
 4. 首次进入游戏后，在“模组 -> MineScreen -> 配置”中检查设置。
 
 MCEF 现在是推荐但可选的客户端后端。未安装时 MineScreen 仍可启动，IDLE、文字、交通、电光
 展示与纯 Java VNC 继续可用；还可选择本机已有 Chromium 系浏览器作为静音的应急 WEB 后端。
-FFmpeg 已随 MineScreen 提供，支持 Windows x64、Linux x64/ARM64 与 macOS x64/ARM64；内置
-原生后端不可用时可选择已有 `ffmpeg` 与 `ffprobe`。MineScreen 不会自动下载这些外部程序。
+FFmpeg 不再塞入 MineScreen 模组 JAR。客户端进入 Minecraft 主菜单后，MineScreen 会下载当前系统对应的
+平台包：下载来源必须在内置 HTTPS 白名单内，并依次校验证书、主机名、DNS 实际地址、文件大小和
+该版本固定的 SHA-256，随后才解压并以独立进程运行 `ffmpeg` 与 `ffprobe`，不经过命令行外壳。
+MineScreen 绝不会自动下载浏览器；也仍可手动选择本机已有的 FFmpeg。
 
 ## 第一次使用屏幕
 
@@ -48,8 +50,8 @@ IDLE 是推荐的初始模式。它显示色彩测试条、方向参考线和中
 
 ### VIDEO
 
-VIDEO 使用 FFmpeg 播放本地 MP4，支持播放/暂停、进度跳转、循环、分辨率调整和最高 30 FPS。
-视频路径只保存在客户端，不会发送给服务器。
+VIDEO 使用 FFmpeg 播放本地 MP4，支持播放/暂停、进度跳转、循环、位置音频、分辨率调整和最高
+30 FPS。视频路径和已下载运行库只保存在客户端，不会发送给服务器。
 
 ### WEB
 
@@ -192,21 +194,28 @@ MineScreen 是“客户端模组 + 可选服务端模组”设计。多人服务
 页面会直观显示 WEB/VIDEO 当前使用的引擎，可重新检测、选择本机已有程序和复制诊断信息。
 外部程序路径与检测结果绝不会上传到服务器。
 
-## 平台兼容性（v1.2.0）
+## 平台兼容性（v1.2.1）
 
 首先必须由启动器、Java 21 与 LWJGL 成功启动 Minecraft 1.21.1。MineScreen 无法让底层不兼容的
 JVM 或图形栈启动，但会在识别到不兼容平台后避免主动加载可选原生库。
 
 | 环境 | WEB | VIDEO | 基础显示 / VNC |
 |---|---|---|---|
-| Windows 10+、Linux、macOS 桌面 | MCEF 优先，已有 Chromium 备用 | 内置 FFmpeg 优先，系统 FFmpeg 备用 | 支持 |
-| Win7 / 旧桌面 | 实验性已有 Chromium 或上次缩略图 | 实验性系统 FFmpeg | 尽力兼容 |
+| Windows 10+、Linux、macOS 桌面 | MCEF 优先，已有 Chromium 备用 | 按需下载并校验 FFmpeg，系统 FFmpeg 备用 | 支持 |
+| Win7 / 旧桌面 | 实验性已有 Chromium 或上次缩略图 | 校验后的独立进程包或系统 FFmpeg，实验支持 | 尽力兼容 |
 | LoongArch / 非常见桌面架构 | 检测到的系统 Chromium | 对应架构的系统 FFmpeg | 游戏能启动时尽力兼容 |
-| Pojav、Android、iOS、HarmonyOS | 停用动态 WEB，显示缩略图与原因 | 仅在确实存在可执行程序时启用 | 尽力兼容 |
+| Pojav、FCL、ZL2、Android ARM64 | 停用动态 WEB，显示缩略图与原因 | 校验 Android ARM64 包，默认 854px/15 FPS | 尽力兼容 |
+| iOS / 不支持的移动架构 | 停用动态 WEB | 只能手动选择确实兼容的程序 | 仅核心功能 |
+| HarmonyOS ARM64 Android 兼容启动器 | 停用动态 WEB | 尝试 Android 进程包，不保证成功 | 尽力兼容 |
 | 完全未知环境 | 不加载可选原生网页引擎 | 不加载可选原生视频引擎 | 仅核心模式 |
 
-Win7、Pojav/Amethyst、HarmonyOS 与 LoongArch 都属于实验环境，不是正式支持目标。外部浏览器
-默认静音并限制分辨率/FPS；外部 FFmpeg 优先保证画面、暂停、跳转和循环，可能没有音频。
+Win7、Pojav/Amethyst、FCL、ZL2、HarmonyOS 与 LoongArch 都属于实验环境，不是正式支持目标。
+Android 的 Chrome/WebView 确实基于 Chromium，但桌面 MCEF/JCEF 不能直接在这些 Android
+启动器中运行，动态 WEB 仍需未来的 Android WebView 桥。外部浏览器默认静音并限制分辨率/FPS；
+MineScreen 不会内置或下载浏览器。
+
+若全部可信 FFmpeg 来源失败，下载页会给出准确的平台文件名、Maven Central 官方 HTTPS 地址和
+“选择已下载文件”入口。浏览器若提示证书不正确，绝对不要继续下载，也不要从不明网站获取文件。
 
 单人世界默认设置更方便使用；将世界开放到局域网前，请重新检查 HTTP、localhost、私网 IP、
 云 metadata、任意域名和 `file://` 等开关。

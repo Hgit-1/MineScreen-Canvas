@@ -14,11 +14,11 @@ import net.minecraft.world.phys.Vec3;
 
 /** Tickable positional wrapper; Minecraft's sound executor performs the actual OpenAL calls. */
 public final class VideoAudioSound extends AbstractTickableSoundInstance {
-    private final FfmpegPcmAudioStream stream;
+    private final AudioStream stream;
     private float baseVolume;
     private float distanceGain;
 
-    public VideoAudioSound(ScreenGroup group, float volume, FfmpegPcmAudioStream stream) {
+    public VideoAudioSound(ScreenGroup group, float volume, AudioStream stream) {
         super(MineScreen.VIDEO_AUDIO.get(), SoundSource.RECORDS, SoundInstance.createUnseededRandom());
         this.stream = stream;
         this.looping = false;

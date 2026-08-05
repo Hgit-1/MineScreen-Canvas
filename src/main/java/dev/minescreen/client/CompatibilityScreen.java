@@ -8,6 +8,7 @@ import dev.minescreen.MineScreenClientConfig;
 import dev.minescreen.client.compat.Availability;
 import dev.minescreen.client.compat.CapabilityResult;
 import dev.minescreen.client.compat.CompatibilityManager;
+import dev.minescreen.client.compat.FfmpegRuntimeManager;
 import dev.minescreen.client.ui.CustomUiArtwork;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
@@ -35,9 +36,9 @@ public final class CompatibilityScreen extends ResponsiveMineScreen {
 
     @Override
     protected void init() {
-        configureResponsiveLayout(700, 370);
+        configureResponsiveLayout(700, 430);
         panelWidth = Math.min(684, layoutWidth() - 16);
-        panelHeight = Math.min(354, layoutHeight() - 12);
+        panelHeight = Math.min(414, layoutHeight() - 12);
         panelLeft = (layoutWidth() - panelWidth) / 2;
         panelTop = (layoutHeight() - panelHeight) / 2;
 
@@ -51,12 +52,20 @@ public final class CompatibilityScreen extends ResponsiveMineScreen {
                 button -> choose(ProgramKind.BROWSER), right - buttonWidth, panelTop + 94,
                 buttonWidth, 20));
         addRenderableWidget(MineScreenButton.create(
-                Component.translatable("screen.minescreen.compatibility.select_ffmpeg"),
-                button -> choose(ProgramKind.FFMPEG), right - buttonWidth, panelTop + 158,
+                Component.translatable("screen.minescreen.compatibility.download_ffmpeg"),
+                button -> downloadFfmpeg(), right - buttonWidth, panelTop + 158,
                 buttonWidth, 20));
         addRenderableWidget(MineScreenButton.create(
+                Component.translatable("screen.minescreen.compatibility.import_ffmpeg"),
+                button -> choose(ProgramKind.RUNTIME), right - buttonWidth, panelTop + 182,
+                buttonWidth, 20));
+        addRenderableWidget(MineScreenButton.create(
+                Component.translatable("screen.minescreen.compatibility.select_ffmpeg"),
+                button -> choose(ProgramKind.FFMPEG), right - buttonWidth * 2 - 6,
+                panelTop + 206, buttonWidth, 20));
+        addRenderableWidget(MineScreenButton.create(
                 Component.translatable("screen.minescreen.compatibility.select_ffprobe"),
-                button -> choose(ProgramKind.FFPROBE), right - buttonWidth, panelTop + 182,
+                button -> choose(ProgramKind.FFPROBE), right - buttonWidth, panelTop + 206,
                 buttonWidth, 20));
         addRenderableWidget(MineScreenButton.create(modeLabel(), button -> toggleMode(),
                 left, bottom, 176, 20));
@@ -102,7 +111,7 @@ public final class CompatibilityScreen extends ResponsiveMineScreen {
                 Component.translatable("screen.minescreen.compatibility.video"),
                 CompatibilityManager.selectedVideo(),
                 CompatibilityManager.externalFfmpeg().orElse(null));
-        renderCapability(graphics, panelTop + 222,
+        renderCapability(graphics, panelTop + 246,
                 Component.translatable("screen.minescreen.compatibility.vnc"),
                 CompatibilityManager.probe(dev.minescreen.client.compat.Capability.VNC_LOSSLESS),
                 null);
@@ -147,9 +156,11 @@ public final class CompatibilityScreen extends ResponsiveMineScreen {
             case BROWSER -> MineScreenClientConfig.EXTERNAL_BROWSER_PATH.get();
             case FFMPEG -> MineScreenClientConfig.EXTERNAL_FFMPEG_PATH.get();
             case FFPROBE -> MineScreenClientConfig.EXTERNAL_FFPROBE_PATH.get();
+            case RUNTIME -> "";
         };
         String selected = TinyFileDialogs.tinyfd_openFileDialog(
-                Component.translatable(kind.titleKey).getString(), configured, null, null, false);
+                Component.translatable(kind.titleKey).getString(), configured, null,
+                kind == ProgramKind.RUNTIME ? "FFmpeg runtime package (*.jar)" : null, false);
         if (selected == null || selected.isBlank()) return;
         try {
             Path executable = Path.of(selected).toAbsolutePath().normalize();
@@ -157,10 +168,13 @@ public final class CompatibilityScreen extends ResponsiveMineScreen {
                 case BROWSER -> MineScreenClientConfig.setExternalBrowser(executable);
                 case FFMPEG -> MineScreenClientConfig.setExternalFfmpeg(executable);
                 case FFPROBE -> MineScreenClientConfig.setExternalFfprobe(executable);
+                case RUNTIME -> FfmpegRuntimeManager.installArchiveAsync(executable);
             }
             CompatibilityManager.refresh();
-            notice = Component.translatable("screen.minescreen.compatibility.saved");
-            noticeColor = 0xFF6FE59A;
+            notice = Component.translatable(kind == ProgramKind.RUNTIME
+                    ? "screen.minescreen.compatibility.runtime_verifying"
+                    : "screen.minescreen.compatibility.saved");
+            noticeColor = kind == ProgramKind.RUNTIME ? 0xFFFFD35E : 0xFF6FE59A;
         } catch (RuntimeException failure) {
             notice = Component.translatable("screen.minescreen.compatibility.save_failed",
                     failure.getMessage() == null ? failure.getClass().getSimpleName()
@@ -173,6 +187,12 @@ public final class CompatibilityScreen extends ResponsiveMineScreen {
         CompatibilityManager.refresh();
         notice = Component.translatable("screen.minescreen.compatibility.refreshed");
         noticeColor = 0xFF6FE59A;
+    }
+
+    private void downloadFfmpeg() {
+        FfmpegRuntimeManager.retry();
+        notice = Component.translatable("screen.minescreen.compatibility.download_started");
+        noticeColor = 0xFFFFD35E;
     }
 
     private void toggleMode() {
@@ -221,7 +241,8 @@ public final class CompatibilityScreen extends ResponsiveMineScreen {
     private enum ProgramKind {
         BROWSER("screen.minescreen.compatibility.select_browser"),
         FFMPEG("screen.minescreen.compatibility.select_ffmpeg"),
-        FFPROBE("screen.minescreen.compatibility.select_ffprobe");
+        FFPROBE("screen.minescreen.compatibility.select_ffprobe"),
+        RUNTIME("screen.minescreen.compatibility.import_ffmpeg");
 
         private final String titleKey;
 

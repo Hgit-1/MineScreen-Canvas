@@ -108,6 +108,8 @@ own future features and does not promise WebDisplays behavior parity.
 - 设计中必须明确提示公网/局域网地址暴露、节点上行消耗、TURN 费用、内容隐私和滥用风险，并支持管理员完全禁用。
 - 第三方 STUN/TURN、浏览器、编解码器及下载源须接受许可证、供应链和地区法律审查，不由客户端静默下载。
 - 移动端动态 WEB 若未来恢复，优先采用启动器/平台提供的原生 WebView 桥，而不是为每个平台私自打包一套 CEF。
+- Android WebView/Chromium 桥需要由 Pojav、FCL、ZL2 等启动器提供受控纹理共享、输入转发与
+  生命周期接口；桌面 MCEF/JCEF 二进制不能直接当作 Android Chromium 使用。
 
 ## UI与可访问性
 

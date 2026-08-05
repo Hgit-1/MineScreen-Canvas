@@ -2,6 +2,22 @@
 
 All notable user-facing changes are documented here.
 
+## 1.2.1
+
+### Secure on-demand media runtime
+
+- Removed bundled JavaCPP/FFmpeg binaries from the universal mod JAR. VIDEO now downloads only the
+  matching Windows, Linux, macOS, or Android ARM64 FFmpeg package on demand, with normal PKIX TLS
+  and hostname checks, public-address DNS enforcement, exact size and pinned SHA-256 validation.
+- Added a combined MCEF/FFmpeg startup progress screen, trusted-source retry, exact canonical manual
+  URL, verified package import, and an explicit warning against invalid certificates/unknown sites.
+- Starts verified FFmpeg preparation after Minecraft reaches its main menu, matching MCEF's
+  startup-download lifecycle instead of waiting until the first VIDEO screen is configured.
+- Added Pojav, FCL and ZL2 classification plus conservative Android defaults (854px, 15 FPS near,
+  5 FPS far). Desktop MCEF remains disabled on Android; core displays and pure-Java VNC remain.
+- Added positional audio to the external FFmpeg process backend and keeps VIDEO sessions in a
+  loading state while their verified runtime is being prepared.
+
 ## 1.2.0
 
 ### Emergency compatibility layer

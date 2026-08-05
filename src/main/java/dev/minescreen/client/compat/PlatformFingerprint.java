@@ -21,6 +21,11 @@ public record PlatformFingerprint(OsFamily os, String osVersion,
         String vmName = lower(properties.get("java.vm.name"));
         boolean pojavEnvironment = environment.containsKey("POJAV_RENDERER")
                 || environment.containsKey("POJAV_NATIVEDIR");
+        boolean androidLauncherEnvironment = environment.keySet().stream().anyMatch(key -> {
+            String normalized = lower(key);
+            return normalized.startsWith("fcl_") || normalized.startsWith("zl2_")
+                    || normalized.contains("foldcraft");
+        });
         boolean harmonyEnvironment = environment.containsKey("HARMONYOS")
                 || environment.containsKey("OHOS_SDK_HOME");
         String joined = osName + " " + vendor + " " + runtimeName + " " + vmName + " "
@@ -28,7 +33,10 @@ public record PlatformFingerprint(OsFamily os, String osVersion,
                 + lower(environment.get("POJAV_NATIVEDIR")) + " "
                 + lower(environment.get("HARMONYOS")) + " "
                 + lower(environment.get("OHOS_SDK_HOME"))
+                + " " + properties.values().stream().map(PlatformFingerprint::lower)
+                        .collect(java.util.stream.Collectors.joining(" "))
                 + (pojavEnvironment ? " pojav" : "")
+                + (androidLauncherEnvironment ? " android-launcher" : "")
                 + (harmonyEnvironment ? " harmony" : "");
 
         RuntimeFlavor runtime;
@@ -39,9 +47,15 @@ public record PlatformFingerprint(OsFamily os, String osVersion,
         } else if (joined.contains("ios") || joined.contains("amethyst-ios")) {
             os = OsFamily.IOS;
             runtime = RuntimeFlavor.MOBILE_LAUNCHER;
-        } else if (joined.contains("android") || joined.contains("pojav")) {
+        } else if (joined.contains("android") || joined.contains("pojav")
+                || joined.contains("foldcraft") || joined.contains("fcl launcher")
+                || joined.contains("zl2")) {
             os = OsFamily.ANDROID;
-            runtime = joined.contains("pojav") ? RuntimeFlavor.POJAV : RuntimeFlavor.MOBILE_LAUNCHER;
+            runtime = joined.contains("pojav") ? RuntimeFlavor.POJAV
+                    : joined.contains("foldcraft") || joined.contains("fcl launcher")
+                            || joined.contains("zl2") || androidLauncherEnvironment
+                                    ? RuntimeFlavor.ANDROID_LAUNCHER
+                                    : RuntimeFlavor.MOBILE_LAUNCHER;
         } else if (osName.contains("windows")) {
             os = OsFamily.WINDOWS;
             runtime = RuntimeFlavor.DESKTOP;
@@ -116,6 +130,7 @@ public record PlatformFingerprint(OsFamily os, String osVersion,
     public enum RuntimeFlavor {
         DESKTOP,
         POJAV,
+        ANDROID_LAUNCHER,
         MOBILE_LAUNCHER,
         UNKNOWN
     }

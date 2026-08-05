@@ -18,7 +18,7 @@ public final class ContentBackendRegistry {
     private static final List<BrowserBackendFactory> BROWSERS = List.of(
             new ReflectiveMcefFactory(), new ExternalChromiumFactory());
     private static final List<VideoBackendFactory> VIDEOS = List.of(
-            new ReflectiveFfmpegFactory(), new SystemFfmpegFactory());
+            new DownloadedFfmpegFactory(), new SystemFfmpegFactory());
 
     private ContentBackendRegistry() {
     }
@@ -58,8 +58,8 @@ public final class ContentBackendRegistry {
             try {
                 return factory.create(request);
             } catch (Throwable failure) {
-                Capability capability = status.backend() == BackendKind.JAVACPP_FFMPEG
-                        ? Capability.EMBEDDED_FFMPEG : Capability.EXTERNAL_FFMPEG;
+                Capability capability = status.backend() == BackendKind.DOWNLOADED_FFMPEG
+                        ? Capability.DOWNLOADED_FFMPEG : Capability.EXTERNAL_FFMPEG;
                 CompatibilityManager.markFailed(capability, unwrap(failure));
                 append(errors, message(unwrap(failure)));
             }
@@ -99,24 +99,17 @@ public final class ContentBackendRegistry {
         }
     }
 
-    private static final class ReflectiveFfmpegFactory implements VideoBackendFactory {
+    private static final class DownloadedFfmpegFactory implements VideoBackendFactory {
         @Override public CapabilityResult probe() {
-            return CompatibilityManager.probe(Capability.EMBEDDED_FFMPEG);
+            return CompatibilityManager.probe(Capability.DOWNLOADED_FFMPEG);
         }
 
         @Override
         public ScreenContentSession create(VideoRequest request) {
-            try {
-                Class<?> type = Class.forName("dev.minescreen.client.video.VideoPlaybackSession", true,
-                        ContentBackendRegistry.class.getClassLoader());
-                Constructor<?> constructor = type.getConstructor(ScreenGroup.class,
-                        ClientScreenProfile.class, VideoSource.class);
-                return (ScreenContentSession) constructor.newInstance(request.group(),
-                        request.profile(), request.source());
-            } catch (ReflectiveOperationException exception) {
-                throw new IllegalStateException("Embedded FFmpeg backend could not be created",
-                        unwrap(exception));
-            }
+            FfmpegRuntimeManager.ProgramPair runtime =
+                    FfmpegRuntimeManager.installedRuntime().orElseThrow();
+            return new ExternalVideoPlaybackSession(request.group(), request.profile(),
+                    request.source(), runtime.ffmpeg(), runtime.ffprobe());
         }
     }
 

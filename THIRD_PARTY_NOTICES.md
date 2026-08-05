@@ -23,7 +23,8 @@ upstream source above. MineScreen-authored files remain under MIT.
 - Selected license: Apache License 2.0
 - License copy: `META-INF/licenses/javacpp-Apache-2.0.txt`
 
-MineScreen embeds the JavaCPP runtime and platform JNI loaders used by its FFmpeg integration.
+MineScreen compiles legacy decoder sources against JavaCPP but no longer embeds the JavaCPP runtime
+or JNI loaders in the mod JAR.
 
 ## FFmpeg 7.1 / JavaCPP Presets 1.5.11
 
@@ -34,8 +35,9 @@ MineScreen embeds the JavaCPP runtime and platform JNI loaders used by its FFmpe
 - License: GNU Lesser General Public License 2.1 or later, with separately licensed components
 - License copy: `META-INF/licenses/ffmpeg-LGPL-2.1.txt`
 
-MineScreen embeds the unmodified shared libraries and JNI wrappers for Windows x64, Linux
-x64/ARM64 and macOS x64/ARM64. They remain dynamically loaded, separable native components.
+MineScreen downloads one unmodified, platform-specific JavaCPP Presets FFmpeg artifact after the
+Minecraft main menu appears. The package is stored outside the mod JAR, verified by HTTPS and a release-
+pinned SHA-256, and its standalone FFmpeg executables/shared libraries remain separable components.
 Corresponding upstream source and build scripts are available from the linked FFmpeg and JavaCPP
 Presets repositories.
 

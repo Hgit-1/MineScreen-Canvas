@@ -162,8 +162,9 @@ final class ExternalProgramDetector {
     private static Probe probe(Path executable, String argument) {
         Process process = null;
         try {
-            process = new ProcessBuilder(List.of(executable.toString(), argument))
-                    .redirectErrorStream(true).start();
+            process = FfmpegProcessEnvironment.configure(
+                    new ProcessBuilder(List.of(executable.toString(), argument))
+                            .redirectErrorStream(true), executable).start();
             if (!process.waitFor(PROBE_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
                 process.destroyForcibly();
                 return new Probe(false, "probe timed out");

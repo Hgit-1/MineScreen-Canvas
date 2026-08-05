@@ -17,6 +17,7 @@ import dev.minescreen.client.content.ScreenRenderSource;
 import dev.minescreen.client.content.ScreenResolution;
 import dev.minescreen.client.content.WebSplitLayout;
 import dev.minescreen.client.compat.ContentBackendRegistry;
+import dev.minescreen.client.compat.FfmpegRuntimeManager;
 import dev.minescreen.client.video.VideoSource;
 import dev.minescreen.client.vnc.RfbEndpoint;
 import dev.minescreen.client.vnc.VncScreenSession;
@@ -172,6 +173,16 @@ final class AsyncContentSession implements BrowserSession {
             }
         } catch (Throwable exception) {
             releaseReservation();
+            // VIDEO can be selected before the small platform runtime has finished installing.
+            // Keep the persistent loading texture and retry finalization on later client ticks;
+            // the user must not need to press Save a second time after the secure download.
+            if (profile.contentType == ScreenContentType.VIDEO
+                    && FfmpegRuntimeManager.snapshot().state().active()) {
+                errorMessage = null;
+                failureReported = false;
+                if (loadingTexture != null) loadingTexture.loading(profile.source);
+                return;
+            }
             Throwable cause = exception.getCause() == null ? exception : exception.getCause();
             errorMessage = cause.getMessage() == null ? cause.getClass().getSimpleName()
                     : cause.getMessage();
