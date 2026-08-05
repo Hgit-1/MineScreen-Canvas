@@ -181,6 +181,8 @@ public final class MineScreen {
         modBus.addListener(this::addCreative);
         modBus.addListener(dev.minescreen.network.MineScreenNetwork::registerPayloads);
         modContainer.registerConfig(ModConfig.Type.COMMON, MineScreenConfig.SPEC);
+        modContainer.registerConfig(ModConfig.Type.CLIENT, MineScreenClientConfig.SPEC,
+                "minescreen-client.toml");
 
         // MOD-bus lifecycle listeners are registered explicitly; no deprecated Bus.MOD annotation.
         if (FMLEnvironment.dist == Dist.CLIENT) {

@@ -1,5 +1,7 @@
 package dev.minescreen.client.video;
 
+import java.nio.ByteBuffer;
+
 import com.mojang.blaze3d.platform.NativeImage;
 import dev.minescreen.mixin.client.NativeImageAccessor;
 import org.lwjgl.system.MemoryUtil;
@@ -26,6 +28,16 @@ public final class NativeImageAccess {
 
     public static void copyRgba(NativeImage image, long sourceAddress, long bytes) {
         MemoryUtil.memCopy(sourceAddress, address(image), bytes);
+    }
+
+    /** Bounded direct-buffer copy. The buffer position is part of the source address. */
+    public static void copyRgba(NativeImage image, ByteBuffer source) {
+        int expected = Math.multiplyExact(Math.multiplyExact(image.getWidth(), image.getHeight()), 4);
+        if (!source.isDirect() || source.remaining() != expected) {
+            throw new IllegalArgumentException("RGBA frame size mismatch: expected " + expected
+                    + " bytes, got " + source.remaining());
+        }
+        MemoryUtil.memCopy(MemoryUtil.memAddress(source), address(image), expected);
     }
 
     public static void clear(NativeImage image, long bytes) {

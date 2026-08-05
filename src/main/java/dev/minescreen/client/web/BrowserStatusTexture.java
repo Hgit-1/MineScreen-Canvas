@@ -15,7 +15,7 @@ import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.ResourceLocation;
 
 /** Reused loading/error texture for one browser tab; spinner uploads are capped at 8 FPS. */
-final class BrowserStatusTexture implements AutoCloseable {
+public final class BrowserStatusTexture implements AutoCloseable {
     private static final long BASE_FRAME_NANOS = 125_000_000L;
     private static final String[] EMPTY_GLYPH = {"000", "000", "000", "000", "000"};
 
@@ -36,7 +36,7 @@ final class BrowserStatusTexture implements AutoCloseable {
     private boolean closed;
     private int[] customDecoration;
 
-    BrowserStatusTexture(UUID screenId, int sourceWidth, int sourceHeight) {
+    public BrowserStatusTexture(UUID screenId, int sourceWidth, int sourceHeight) {
         this.screenId = screenId;
         location = ResourceLocation.fromNamespaceAndPath(MineScreen.MOD_ID,
                 "web/status_" + UUID.randomUUID().toString().replace("-", ""));
@@ -44,7 +44,7 @@ final class BrowserStatusTexture implements AutoCloseable {
         resize(sourceWidth, sourceHeight);
     }
 
-    void loading(String url) {
+    public void loading(String url) {
         phase = Phase.LOADING;
         message = "";
         lastSpinnerFrame = -1;
@@ -71,7 +71,7 @@ final class BrowserStatusTexture implements AutoCloseable {
         }
     }
 
-    void error(String url, int statusCode, String details) {
+    public void error(String url, int statusCode, String details) {
         phase = Phase.ERROR;
         if (url != null && !url.isBlank()) {
             requestedUrl = url;
@@ -89,7 +89,7 @@ final class BrowserStatusTexture implements AutoCloseable {
         return phase == Phase.ERROR;
     }
 
-    void resize(int sourceWidth, int sourceHeight) {
+    public void resize(int sourceWidth, int sourceHeight) {
         int safeWidth = Math.max(1, sourceWidth);
         int safeHeight = Math.max(1, sourceHeight);
         double scale = Math.min(1.0D, Math.min(WebThumbnailCache.MAX_WIDTH / (double) safeWidth,
@@ -112,7 +112,7 @@ final class BrowserStatusTexture implements AutoCloseable {
         lastSpinnerFrame = -1;
     }
 
-    ScreenRenderSource renderSource() {
+    public ScreenRenderSource renderSource() {
         return source;
     }
 

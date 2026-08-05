@@ -204,6 +204,12 @@ public final class VideoPlaybackSession implements ScreenContentSession {
         return decoder.errorMessage();
     }
 
+    @Override
+    public String loadingStatusTranslationKey() {
+        return hasDecodedFrame() ? null : "screen.minescreen.video.stage."
+                + decoderStage().name().toLowerCase(java.util.Locale.ROOT);
+    }
+
     public boolean hasDecodedFrame() {
         return decoder.decodedFrames() > 0L;
     }

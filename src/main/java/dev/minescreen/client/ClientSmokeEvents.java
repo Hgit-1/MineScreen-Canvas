@@ -3,7 +3,6 @@ package dev.minescreen.client;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.LockSupport;
 
-import com.cinemamod.mcef.MCEF;
 import com.mojang.logging.LogUtils;
 
 import dev.minescreen.MineScreen;
@@ -28,12 +27,16 @@ public final class ClientSmokeEvents {
 
     @SubscribeEvent
     public static void afterFirstFrame(RenderFrameEvent.Post event) {
+        boolean requireMcef = Boolean.parseBoolean(
+                System.getProperty("minescreen.qa.requireMcef", "true"));
         if (!Boolean.getBoolean("minescreen.qa.autoStopClient")
-                || !MCEF.isInitialized()
+                || (requireMcef && !mcefInitialized())
                 || !STOPPING.compareAndSet(false, true)) {
             return;
         }
-        LOGGER.info("MineScreen client smoke test reached MCEF_READY_AND_FIRST_RENDERED_FRAME; stopping cleanly");
+        LOGGER.info("MineScreen client smoke test reached {}; stopping cleanly",
+                requireMcef ? "MCEF_READY_AND_FIRST_RENDERED_FRAME"
+                        : "NO_MCEF_CORE_FIRST_RENDERED_FRAME");
         // MCEF may still have a non-daemon native-library download worker during a pristine test
         // run. Ask Minecraft to shut down normally first, then give shutdown hooks ten seconds
         // before ending this opt-in QA process. This branch is unreachable in a normal game.
@@ -46,5 +49,15 @@ public final class ClientSmokeEvents {
                     System.exit(0);
                 });
         Minecraft.getInstance().stop();
+    }
+
+    private static boolean mcefInitialized() {
+        try {
+            Class<?> mcef = Class.forName("com.cinemamod.mcef.MCEF", false,
+                    ClientSmokeEvents.class.getClassLoader());
+            return Boolean.TRUE.equals(mcef.getMethod("isInitialized").invoke(null));
+        } catch (Throwable ignored) {
+            return false;
+        }
     }
 }

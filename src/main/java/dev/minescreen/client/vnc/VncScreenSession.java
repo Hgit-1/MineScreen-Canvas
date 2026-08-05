@@ -16,7 +16,7 @@ import dev.minescreen.client.content.ScreenContentSession;
 import dev.minescreen.client.content.ScreenContentType;
 import dev.minescreen.client.content.ScreenRenderSource;
 import dev.minescreen.client.video.NativeImageAccess;
-import dev.minescreen.client.web.BrowserRequestPolicy;
+import dev.minescreen.client.web.NetworkRequestPolicy;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.ResourceLocation;
@@ -45,7 +45,7 @@ public final class VncScreenSession implements ScreenContentSession, ScreenInput
     /** Finalization constructor used by joined canvases after asynchronous endpoint validation. */
     public VncScreenSession(ScreenGroup group, ClientScreenProfile profile, RfbEndpoint endpoint,
             UUID credentialGroupId, boolean policyValidated) {
-        if (!policyValidated && !BrowserRequestPolicy.isAllowed(endpoint.policyUrl())) {
+        if (!policyValidated && !NetworkRequestPolicy.isAllowed(endpoint.policyUrl())) {
             throw new IllegalStateException("VNC endpoint blocked by MineScreen network policy");
         }
         groupId = group.groupId();

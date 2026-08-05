@@ -24,7 +24,7 @@ import dev.minescreen.client.content.HostSurfaceLayout;
 import dev.minescreen.client.vnc.RfbEndpoint;
 import dev.minescreen.client.vnc.VncCredentialStore;
 import dev.minescreen.client.vnc.VncRefreshRate;
-import dev.minescreen.client.web.BrowserRequestPolicy;
+import dev.minescreen.client.web.NetworkRequestPolicy;
 import dev.minescreen.client.video.VideoSource;
 import dev.minescreen.client.web.BrowserSession;
 import dev.minescreen.client.ui.MineScreenUiRegistry;
@@ -777,13 +777,12 @@ public final class ComputerScreen extends ResponsiveMineScreen {
         if (directError != null && !directError.isBlank()) {
             return Component.translatable("screen.minescreen.backend_error", directError);
         }
-        if (session instanceof dev.minescreen.client.video.VideoPlaybackSession video
-                && !video.hasDecodedFrame()) {
+        String loadingKey = session.loadingStatusTranslationKey();
+        if (loadingKey != null) {
             if (contentDraft.paused) {
                 return Component.translatable("screen.minescreen.video.waiting_paused");
             }
-            return Component.translatable("screen.minescreen.video.stage."
-                    + video.decoderStage().name().toLowerCase(java.util.Locale.ROOT));
+            return Component.translatable(loadingKey);
         }
         return null;
     }
@@ -895,7 +894,7 @@ public final class ComputerScreen extends ResponsiveMineScreen {
                     contentError("screen.minescreen.error.web_format");
                     return;
                 }
-                if (!BrowserRequestPolicy.isAllowed(source)) {
+                if (!NetworkRequestPolicy.isAllowed(source)) {
                     contentError("screen.minescreen.error.web_blocked");
                     return;
                 }
@@ -928,7 +927,7 @@ public final class ComputerScreen extends ResponsiveMineScreen {
             case VNC -> {
                 try {
                     RfbEndpoint endpoint = RfbEndpoint.parse(source);
-                    if (!BrowserRequestPolicy.isAllowed(endpoint.policyUrl())) {
+                    if (!NetworkRequestPolicy.isAllowed(endpoint.policyUrl())) {
                         contentError("screen.minescreen.error.vnc_blocked");
                         return;
                     }

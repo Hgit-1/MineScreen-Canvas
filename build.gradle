@@ -75,6 +75,16 @@ neoForge {
             gameDirectory = project.file('run/client-smoke')
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
             systemProperty 'minescreen.qa.autoStopClient', 'true'
+            systemProperty 'minescreen.qa.requireMcef', 'true'
+        }
+        clientCoreSmoke {
+            client()
+            // No MCEF mod is installed into this directory. This proves the optional dependency
+            // and delayed factory allow a core-only client to render and shut down cleanly.
+            gameDirectory = project.file('run/client-core-smoke')
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+            systemProperty 'minescreen.qa.autoStopClient', 'true'
+            systemProperty 'minescreen.qa.requireMcef', 'false'
         }
         server {
             server()
@@ -168,8 +178,8 @@ dependencies {
     scriptEmbed 'org.mozilla:rhino:1.9.1'
     testImplementation('com.google.code.gson:gson:2.11.0') { transitive = false }
 
-    // MCEF is a required client mod, not shaded into MineScreen. The common artifact exposes its API;
-    // the NeoForge artifact is present in development runs and is installed separately by end users.
+    // MCEF is an optional client backend, never shaded into MineScreen. Runtime code reaches its
+    // API only through a delayed compatibility factory after the platform and mod are both probed.
     compileOnly 'com.cinemamod:mcef:2.1.6-1.21.1'
     mcefClientSmokeMod 'com.cinemamod:mcef-neoforge:2.1.6-1.21.1'
 
@@ -318,6 +328,20 @@ tasks.register('packagedFfmpegProbe', JavaExec) {
     mainClass = 'dev.minescreen.client.video.PackagedFfmpegProbe'
 }
 
+tasks.register('externalFfmpegProbe', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath + clientProbeMinecraftClasspath + files(
+            layout.buildDirectory.file("moddev/artifacts/neoforge-${neo_version}-minecraft-merged.jar"))
+    mainClass = 'dev.minescreen.client.video.ExternalFfmpegVideoProbe'
+    if (providers.gradleProperty('externalFfmpegPath').isPresent()
+            && providers.gradleProperty('externalFfprobePath').isPresent()
+            && providers.gradleProperty('videoProbeSource').isPresent()) {
+        args providers.gradleProperty('externalFfmpegPath').get(),
+                providers.gradleProperty('externalFfprobePath').get(),
+                providers.gradleProperty('videoProbeSource').get()
+    }
+}
+
 tasks.register('profileSourceTest', JavaExec) {
     dependsOn testClasses
     classpath = sourceSets.test.runtimeClasspath
@@ -361,6 +385,12 @@ tasks.register('securityPolicyTest', JavaExec) {
     mainClass = 'dev.minescreen.network.SecurityPolicyTestHarness'
 }
 
+tasks.register('platformFingerprintTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.minescreen.client.compat.PlatformFingerprintTestHarness'
+}
+
 tasks.register('trainEtaEstimatorTest', JavaExec) {
     dependsOn testClasses
     classpath = sourceSets.test.runtimeClasspath
@@ -390,6 +420,7 @@ tasks.named('check').configure {
     dependsOn tasks.named('trafficImportTest')
     dependsOn tasks.named('trafficTemplateSyncTest')
     dependsOn tasks.named('securityPolicyTest')
+    dependsOn tasks.named('platformFingerprintTest')
     dependsOn tasks.named('trainEtaEstimatorTest')
     dependsOn tasks.named('releaseIntegrityTest')
     dependsOn tasks.named('lcdStudioSimulationTest')

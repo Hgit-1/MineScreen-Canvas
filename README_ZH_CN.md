@@ -19,13 +19,14 @@ IDLE 模式检查屏幕方向、拼合关系和画面位置。
 ## 安装
 
 1. 安装 Minecraft Java 1.21.1 和 NeoForge 21.1.219。
-2. 将 `minescreen-1.1.0.jar` 放入客户端 `mods` 文件夹。
-3. 每个 MineScreen 客户端都要安装官方 MCEF NeoForge 模组 `2.1.6-1.21.1`。
+2. 将 `minescreen-1.2.0.jar` 放入客户端 `mods` 文件夹。
+3. 如需完整 WEB 功能，在客户端安装官方 MCEF NeoForge 模组 `2.1.6-1.21.1`。
 4. 首次进入游戏后，在“模组 -> MineScreen -> 配置”中检查设置。
 
-MCEF 是 MineScreen 的必需客户端依赖，用于提供浏览器运行时；独立服务器不需要安装 MCEF。
-FFmpeg 已随 MineScreen 提供，支持 Windows x64、Linux x64/ARM64 与 macOS x64/ARM64 的
-本地视频播放。
+MCEF 现在是推荐但可选的客户端后端。未安装时 MineScreen 仍可启动，IDLE、文字、交通、电光
+展示与纯 Java VNC 继续可用；还可选择本机已有 Chromium 系浏览器作为静音的应急 WEB 后端。
+FFmpeg 已随 MineScreen 提供，支持 Windows x64、Linux x64/ARM64 与 macOS x64/ARM64；内置
+原生后端不可用时可选择已有 `ffmpeg` 与 `ffprobe`。MineScreen 不会自动下载这些外部程序。
 
 ## 第一次使用屏幕
 
@@ -52,7 +53,8 @@ VIDEO 使用 FFmpeg 播放本地 MP4，支持播放/暂停、进度跳转、循�
 
 ### WEB
 
-WEB 使用 MCEF 的离屏 Chromium，支持网页导航、在 MineScreen 内管理新标签页、标签页切换、
+WEB 优先使用 MCEF 的离屏 Chromium；应急模式通过仅监听回环地址的内部接口控制本机已有、隔离
+运行的 Chromium。支持网页导航、在 MineScreen 内管理新标签页、标签页切换、
 点击、滚轮、键盘输入以及网页请求的 Pointer Lock。按 Escape 可退出输入捕获。HTTP、HTTPS、
 本地文件、私网和域名白名单由配置文件控制。
 
@@ -186,6 +188,26 @@ MineScreen 是“客户端模组 + 可选服务端模组”设计。多人服务
 - VNC FPS、音频距离、WEB P2P 和渲染距离。
 - Create 站台自动查找半径，以及声明式交通模板同步和服务器模板数量上限。
 
+`config/minescreen-client.toml` 保存仅客户端使用的兼容设置。屏幕编辑器中的“兼容性与后端”
+页面会直观显示 WEB/VIDEO 当前使用的引擎，可重新检测、选择本机已有程序和复制诊断信息。
+外部程序路径与检测结果绝不会上传到服务器。
+
+## 平台兼容性（v1.2.0）
+
+首先必须由启动器、Java 21 与 LWJGL 成功启动 Minecraft 1.21.1。MineScreen 无法让底层不兼容的
+JVM 或图形栈启动，但会在识别到不兼容平台后避免主动加载可选原生库。
+
+| 环境 | WEB | VIDEO | 基础显示 / VNC |
+|---|---|---|---|
+| Windows 10+、Linux、macOS 桌面 | MCEF 优先，已有 Chromium 备用 | 内置 FFmpeg 优先，系统 FFmpeg 备用 | 支持 |
+| Win7 / 旧桌面 | 实验性已有 Chromium 或上次缩略图 | 实验性系统 FFmpeg | 尽力兼容 |
+| LoongArch / 非常见桌面架构 | 检测到的系统 Chromium | 对应架构的系统 FFmpeg | 游戏能启动时尽力兼容 |
+| Pojav、Android、iOS、HarmonyOS | 停用动态 WEB，显示缩略图与原因 | 仅在确实存在可执行程序时启用 | 尽力兼容 |
+| 完全未知环境 | 不加载可选原生网页引擎 | 不加载可选原生视频引擎 | 仅核心模式 |
+
+Win7、Pojav/Amethyst、HarmonyOS 与 LoongArch 都属于实验环境，不是正式支持目标。外部浏览器
+默认静音并限制分辨率/FPS；外部 FFmpeg 优先保证画面、暂停、跳转和循环，可能没有音频。
+
 单人世界默认设置更方便使用；将世界开放到局域网前，请重新检查 HTTP、localhost、私网 IP、
 云 metadata、任意域名和 `file://` 等开关。
 
@@ -202,7 +224,7 @@ MineScreen 是“客户端模组 + 可选服务端模组”设计。多人服务
 
 ## 已知边界
 
-- 每个 MineScreen 客户端都必须安装 MCEF；MCEF 会在首次运行时自行下载 CEF。
+- MCEF 为可选但强烈推荐的完整 WEB 后端；外部浏览器只是应急兼容路径，网页空间音频等能力会降级。
 - 本地视频当前以 MP4 为主，支持将第一条音轨解码为 48 kHz 立体声位置音频；尚不支持选择
   或混合多条音轨。
 - VNC 带宽取决于桌面变化量、压缩方式、分辨率和 FPS。
