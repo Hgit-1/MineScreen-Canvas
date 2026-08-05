@@ -40,6 +40,11 @@ public interface ScreenContentSession extends AutoCloseable {
         return null;
     }
 
+    /** Optional translated loading-stage key without exposing a concrete native backend type. */
+    default String loadingStatusTranslationKey() {
+        return null;
+    }
+
     @Override
     void close();
 }

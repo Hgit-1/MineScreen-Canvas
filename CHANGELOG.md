@@ -2,6 +2,34 @@
 
 All notable user-facing changes are documented here.
 
+## 1.2.0
+
+### Emergency compatibility layer
+
+- Made MCEF an optional client dependency and isolated both MCEF and JavaCPP FFmpeg behind lazy,
+  failure-caching backend factories. A missing or incompatible native backend no longer prevents
+  MineScreen's core display features from starting.
+- Added normalized detection for desktop, Win7, Pojav/Android, iOS, HarmonyOS, LoongArch and
+  unknown runtimes. Unsupported environments avoid optional native initialization.
+- Added an emergency installed-Chromium WEB backend with isolated profiles, loopback-only control,
+  request-policy interception, resolved-address verification, tabs, input, screencasting and a
+  rate-limited screenshot fallback for older Chromium builds.
+- Added an emergency system `ffmpeg`/`ffprobe` video backend that reuses the bounded three-slot
+  frame ring and persistent Minecraft texture. External compatibility video is intentionally
+  muted when the native audio path is unavailable.
+- Added pure-Java VNC lossless fallback when the JPEG/Tight decoder is unavailable.
+
+### Player guidance and packaging
+
+- Added `minescreen-client.toml` and an in-game Compatibility & Backends page for status, repeated
+  detection, selecting existing executables and copying diagnostics.
+- Added graceful loading/error textures and retained WEB thumbnails instead of leaving an
+  unavailable client with a black screen.
+- Added a no-MCEF first-frame client smoke target, platform-classification tests and optional-MCEF
+  release-integrity validation.
+- Updated the platform matrix and documented that MineScreen cannot bypass a launcher, Java 21,
+  LWJGL or base Minecraft incompatibility. No browser or FFmpeg fallback is downloaded.
+
 ## 1.1.0
 
 ### Highlights

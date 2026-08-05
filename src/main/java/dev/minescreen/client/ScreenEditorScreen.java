@@ -16,17 +16,20 @@ import dev.minescreen.client.content.ScreenContentType;
 import dev.minescreen.client.content.ScreenResolution;
 import dev.minescreen.client.content.ScreenRegionLayout;
 import dev.minescreen.client.content.WebSplitLayout;
+import dev.minescreen.client.compat.CapabilityResult;
+import dev.minescreen.client.compat.CompatibilityManager;
 import dev.minescreen.client.vnc.RfbEndpoint;
 import dev.minescreen.client.vnc.VncCredentialStore;
 import dev.minescreen.client.vnc.VncRefreshRate;
 import dev.minescreen.client.video.VideoSource;
-import dev.minescreen.client.web.BrowserRequestPolicy;
+import dev.minescreen.client.web.NetworkRequestPolicy;
 import dev.minescreen.client.web.BrowserSession;
 import dev.minescreen.client.ui.MineScreenUiRegistry;
 import dev.minescreen.client.ui.CustomUiArtwork;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
@@ -213,6 +216,10 @@ public final class ScreenEditorScreen extends ResponsiveMineScreen {
                 button -> cycleAccess(), panelLeft + panelWidth - 148, panelTop + 136, 134, 20));
 
         int bottom = panelTop + panelHeight - 28;
+        addRenderableWidget(MineScreenButton.create(
+                Component.translatable("screen.minescreen.compatibility.open"),
+                button -> minecraft.setScreen(new CompatibilityScreen(this)),
+                panelLeft + 14, bottom, 148, 20));
         addRenderableWidget(MineScreenButton.create(Component.translatable("screen.minescreen.save"),
                 button -> saveAndClose(), panelLeft + panelWidth - 218, bottom, 98, 20));
         addRenderableWidget(MineScreenButton.create(Component.translatable("gui.cancel"),
@@ -553,7 +560,7 @@ public final class ScreenEditorScreen extends ResponsiveMineScreen {
         } else if (profile.contentType == ScreenContentType.VNC) {
             try {
                 RfbEndpoint endpoint = RfbEndpoint.parse(source);
-                if (!BrowserRequestPolicy.isAllowed(endpoint.policyUrl())) {
+                if (!NetworkRequestPolicy.isAllowed(endpoint.policyUrl())) {
                     error("screen.minescreen.error.vnc_blocked");
                     return;
                 }
@@ -611,7 +618,7 @@ public final class ScreenEditorScreen extends ResponsiveMineScreen {
             error("screen.minescreen.error.web_format");
             return false;
         }
-        if (!BrowserRequestPolicy.isAllowed(source)) {
+        if (!NetworkRequestPolicy.isAllowed(source)) {
             error("screen.minescreen.error.web_blocked");
             return false;
         }
@@ -653,6 +660,22 @@ public final class ScreenEditorScreen extends ResponsiveMineScreen {
         for (int i = 0; i < modeButtons.length; i++) {
             modeButtons[i].visible = contentPage;
             modeButtons[i].active = ScreenContentType.values()[i] != profile.contentType;
+            ScreenContentType type = ScreenContentType.values()[i];
+            CapabilityResult capability = switch (type) {
+                case WEB -> CompatibilityManager.selectedBrowser();
+                case VIDEO -> CompatibilityManager.selectedVideo();
+                case VNC -> CompatibilityManager.probe(
+                        dev.minescreen.client.compat.Capability.VNC_LOSSLESS);
+                case IDLE -> CompatibilityManager.probe(
+                        dev.minescreen.client.compat.Capability.CORE_DISPLAY);
+            };
+            modeButtons[i].setTooltip(Tooltip.create(Component.translatable(
+                    "screen.minescreen.compatibility.mode_tooltip",
+                    Component.translatable("screen.minescreen.compatibility.availability."
+                            + capability.availability().name().toLowerCase(Locale.ROOT)),
+                    Component.translatable("screen.minescreen.compatibility.backend."
+                            + capability.backend().name().toLowerCase(Locale.ROOT)),
+                    capability.reason())));
         }
         status = Component.translatable("screen.minescreen.guide." + profile.contentType.name()
                 .toLowerCase(Locale.ROOT));

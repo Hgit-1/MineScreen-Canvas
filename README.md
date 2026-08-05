@@ -24,13 +24,15 @@ as independent panes or as one panoramic display.
 ## Install
 
 1. Install Minecraft Java 1.21.1 with NeoForge 21.1.219.
-2. Put `minescreen-1.1.0.jar` in the client `mods` folder.
-3. Install the official MCEF NeoForge mod `2.1.6-1.21.1` on every MineScreen client.
+2. Put `minescreen-1.2.0.jar` in the client `mods` folder.
+3. For full WEB support, install the official MCEF NeoForge mod `2.1.6-1.21.1` on the client.
 4. Start the game once, then configure MineScreen from `Mods -> MineScreen -> Config`.
 
-MCEF is a required client dependency because it supplies MineScreen's browser runtime. A dedicated
-server does not need MCEF. FFmpeg is included for Windows x64, Linux x64/ARM64, and macOS
-x64/ARM64 local-video playback.
+MCEF is now an optional, recommended client backend. Without it, MineScreen still starts and keeps
+IDLE, text, traffic, electric-light and pure-Java VNC features. MineScreen can use an already
+installed Chromium-family browser as a muted emergency WEB backend. FFmpeg is included for Windows
+x64, Linux x64/ARM64, and macOS x64/ARM64; an existing system `ffmpeg` + `ffprobe` can be selected
+when the embedded native backend is not usable. MineScreen never downloads either external program.
 
 ## First screen
 
@@ -60,7 +62,8 @@ resolution, and a maximum of 30 FPS. The file path is stored locally and is neve
 
 ### WEB
 
-WEB uses MCEF's off-screen Chromium renderer. It supports HTTPS/HTTP according to configuration,
+WEB prefers MCEF's off-screen Chromium renderer. Its emergency backend controls an already-installed,
+isolated Chromium process through a loopback-only internal interface. Both support HTTPS/HTTP according to configuration,
 navigation, pop-up links as MineScreen tabs, tab switching, scrolling, clicking, keyboard focus,
 and browser Pointer Lock when a page requests relative mouse movement. Press Escape to leave input
 capture.
@@ -208,6 +211,29 @@ Useful settings include:
 - `ui_show_custom_decoration` and `ui_custom_decoration_opacity_percent`;
 - VNC FPS, WEB peer distribution, audio distance, and render distance.
 
+`config/minescreen-client.toml` contains client-only compatibility settings. The screen editor's
+**Compatibility & backends** page shows the selected WEB/VIDEO engines, reruns detection, lets you
+select existing executables, and copies a diagnostic summary. Program paths and probe results are
+never uploaded to a server.
+
+## Platform compatibility (v1.2.0)
+
+The base game must be able to start Minecraft 1.21.1, Java 21 and LWJGL first. MineScreen's
+compatibility layer cannot make an unsupported launcher, JVM or graphics stack boot, but it avoids
+loading an optional native backend after the platform has been classified as incompatible.
+
+| Runtime | WEB | VIDEO | Core displays / VNC |
+|---|---|---|---|
+| Supported Windows 10+, Linux or macOS desktop | MCEF preferred; installed Chromium fallback | Embedded FFmpeg preferred; system FFmpeg fallback | Supported |
+| Windows 7 / old desktop | Experimental installed Chromium or last thumbnail | Experimental system FFmpeg | Best effort |
+| LoongArch / uncommon desktop architecture | Installed Chromium when detected | Matching system FFmpeg when detected | Best effort if Minecraft starts |
+| Pojav, Android, iOS, HarmonyOS | Dynamic WEB disabled; last thumbnail and reason | System executable only when actually present | Best effort |
+| Unknown runtime | Optional native engines remain unloaded | Optional native engines remain unloaded | Core-only mode |
+
+Win7, Pojav/Amethyst, HarmonyOS and LoongArch are experimental rather than supported release
+targets. External browser mode is muted and rate-limited by default; external FFmpeg prioritizes
+picture, pause, seek and loop and may be muted. No fallback program is bundled or downloaded.
+
 ## Custom artwork
 
 Place optional transparent PNG files in [user_assets](user_assets/):
@@ -221,7 +247,8 @@ Missing artwork is ignored without a missing-texture placeholder.
 
 ## Known boundaries
 
-- MineScreen requires MCEF on each client; MCEF performs its own first-run CEF download.
+- MCEF is optional but recommended for full WEB performance, page audio and the best input support;
+  the external-browser fallback is an emergency compatibility path.
 - Local video support is currently MP4-focused. The first audio stream is decoded to positional
   48 kHz stereo; selecting or mixing multiple audio tracks is not supported.
 - VNC bandwidth depends heavily on desktop changes, compression, resolution, and FPS.

@@ -16,13 +16,13 @@ import dev.minescreen.client.content.ScreenContentType;
 import dev.minescreen.client.content.ScreenRenderSource;
 import dev.minescreen.client.content.ScreenResolution;
 import dev.minescreen.client.content.WebSplitLayout;
-import dev.minescreen.client.video.VideoPlaybackSession;
+import dev.minescreen.client.compat.ContentBackendRegistry;
 import dev.minescreen.client.video.VideoSource;
 import dev.minescreen.client.vnc.RfbEndpoint;
 import dev.minescreen.client.vnc.VncScreenSession;
-import dev.minescreen.client.web.BrowserRequestPolicy;
 import dev.minescreen.client.web.BrowserSession;
-import dev.minescreen.client.web.McefBrowserSession;
+import dev.minescreen.client.web.BrowserStatusTexture;
+import dev.minescreen.client.web.NetworkRequestPolicy;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 
@@ -48,6 +48,7 @@ final class AsyncContentSession implements BrowserSession {
     private final UUID credentialGroupId;
     private final ClientScreenProfile profile;
     private final CompletableFuture<Prepared> prepared;
+    private BrowserStatusTexture loadingTexture;
     private ScreenContentSession delegate;
     private boolean closed;
     private boolean reserved;
@@ -60,6 +61,11 @@ final class AsyncContentSession implements BrowserSession {
         this.stateGroup = stateGroup == null ? group : stateGroup;
         this.credentialGroupId = credentialGroupId == null ? group.groupId() : credentialGroupId;
         this.profile = profile.copy();
+        int[] dimensions = ScreenResolution.dimensions(group, profile);
+        loadingTexture = profile.contentType == ScreenContentType.WEB
+                || profile.contentType == ScreenContentType.VIDEO
+                ? new BrowserStatusTexture(group.groupId(), dimensions[0], dimensions[1]) : null;
+        if (loadingTexture != null) loadingTexture.loading(profile.source);
         prepared = submit(this.profile);
     }
 
@@ -92,13 +98,13 @@ final class AsyncContentSession implements BrowserSession {
         switch (checked.contentType) {
             case VIDEO -> video = VideoSource.resolve(checked.source);
             case WEB -> {
-                if (!BrowserRequestPolicy.isAllowed(checked.source)) {
+                if (!NetworkRequestPolicy.isAllowed(checked.source)) {
                     throw new IllegalStateException("WEB URL blocked by MineScreen network policy");
                 }
                 checked.webTabs = checked.webTabs == null ? new java.util.ArrayList<>()
                         : checked.webTabs.stream().filter(java.util.Objects::nonNull)
                                 .filter(url -> !url.equals(checked.source))
-                                .filter(BrowserRequestPolicy::isAllowed).distinct()
+                                .filter(NetworkRequestPolicy::isAllowed).distinct()
                                 .limit(Math.max(0,
                                         MineScreenConfig.MAX_WEB_TABS_PER_SESSION.get() - 1L))
                                 .collect(java.util.stream.Collectors.toCollection(
@@ -106,7 +112,7 @@ final class AsyncContentSession implements BrowserSession {
             }
             case VNC -> {
                 vnc = RfbEndpoint.parse(checked.source);
-                if (!BrowserRequestPolicy.isAllowed(vnc.policyUrl())) {
+                if (!NetworkRequestPolicy.isAllowed(vnc.policyUrl())) {
                     throw new IllegalStateException("VNC endpoint blocked by MineScreen network policy");
                 }
             }
@@ -123,7 +129,10 @@ final class AsyncContentSession implements BrowserSession {
 
     @Override
     public ScreenRenderSource renderSource() {
-        return delegate == null ? ScreenTextureManager.idleRenderSource() : delegate.renderSource();
+        return delegate == null
+                ? loadingTexture == null ? ScreenTextureManager.idleRenderSource()
+                        : loadingTexture.renderSource()
+                : delegate.renderSource();
     }
 
     @Override
@@ -151,17 +160,22 @@ final class AsyncContentSession implements BrowserSession {
         try {
             Prepared result = prepared.join();
             delegate = switch (result.profile().contentType) {
-                case VIDEO -> new VideoPlaybackSession(group, result.profile(), result.video());
-                case WEB -> new McefBrowserSession(group, result.profile(), true, stateGroup);
+                case VIDEO -> ContentBackendRegistry.createVideo(group, result.profile(), result.video());
+                case WEB -> ContentBackendRegistry.createBrowser(group, result.profile(), stateGroup);
                 case VNC -> new VncScreenSession(group, result.profile(), result.vnc(),
                         credentialGroupId, true);
                 case IDLE -> null;
             };
+            if (delegate != null && loadingTexture != null) {
+                loadingTexture.close();
+                loadingTexture = null;
+            }
         } catch (Throwable exception) {
             releaseReservation();
             Throwable cause = exception.getCause() == null ? exception : exception.getCause();
             errorMessage = cause.getMessage() == null ? cause.getClass().getSimpleName()
                     : cause.getMessage();
+            if (loadingTexture != null) loadingTexture.error(profile.source, 0, errorMessage);
             reportFailure();
         }
     }
@@ -211,6 +225,10 @@ final class AsyncContentSession implements BrowserSession {
     public void resize(ScreenGroup nextGroup) {
         group = nextGroup;
         updateReservation();
+        if (loadingTexture != null) {
+            int[] dimensions = ScreenResolution.dimensions(nextGroup, profile);
+            loadingTexture.resize(dimensions[0], dimensions[1]);
+        }
         if (delegate != null) {
             delegate.resize(nextGroup);
         }
@@ -378,6 +396,7 @@ final class AsyncContentSession implements BrowserSession {
             delegate.close();
             delegate = null;
         }
+        if (loadingTexture != null) loadingTexture.close();
         releaseReservation();
     }
 

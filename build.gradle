@@ -46,13 +46,16 @@ repositories {
             includeGroup 'com.cinemamod'
         }
     }
+    // Use Create's published Modrinth artifact for the optional compile-time API. The upstream
+    // Create Maven occasionally serves an incomplete TLS chain to clean JDK trust stores (notably
+    // GitHub's Windows runners). Modrinth is already an official Create distribution channel and
+    // avoids weakening Gradle's TLS verification or importing an untrusted certificate.
     exclusiveContent {
         forRepository {
-            maven { url = 'https://maven.createmod.net' }
+            maven { url = 'https://api.modrinth.com/maven' }
         }
         filter {
-            includeGroup 'com.simibubi.create'
-            includeGroup 'net.createmod.ponder'
+            includeGroup 'maven.modrinth'
         }
     }
 }
@@ -75,6 +78,16 @@ neoForge {
             gameDirectory = project.file('run/client-smoke')
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
             systemProperty 'minescreen.qa.autoStopClient', 'true'
+            systemProperty 'minescreen.qa.requireMcef', 'true'
+        }
+        clientCoreSmoke {
+            client()
+            // No MCEF mod is installed into this directory. This proves the optional dependency
+            // and delayed factory allow a core-only client to render and shut down cleanly.
+            gameDirectory = project.file('run/client-core-smoke')
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+            systemProperty 'minescreen.qa.autoStopClient', 'true'
+            systemProperty 'minescreen.qa.requireMcef', 'false'
         }
         server {
             server()
@@ -135,7 +148,46 @@ configurations {
         canBeResolved = true
         transitive = false
     }
+    createCompileBundle {
+        canBeConsumed = false
+        canBeResolved = true
+        transitive = false
+    }
 }
+
+// Ponder is nested inside the official Create distribution. Extract that exact pinned nested jar
+// for javac instead of contacting a second Maven coordinate. It remains compile-only and is never
+// packaged into MineScreen; an installed Create mod supplies Ponder at runtime.
+def ponderCompileVersion = '1.0.81+mc1.21.1'
+def ponderCompileName = "ponder-neoforge-${ponderCompileVersion}.jar"
+def ponderCompileJar = layout.buildDirectory.file("compile-dependencies/${ponderCompileName}")
+def extractPonderCompileJar = tasks.register('extractPonderCompileJar') {
+    inputs.files(configurations.createCompileBundle)
+    outputs.file(ponderCompileJar)
+    doLast {
+        File createJar = configurations.createCompileBundle.singleFile
+        File output = ponderCompileJar.get().asFile
+        output.parentFile.mkdirs()
+        new java.util.zip.ZipFile(createJar).withCloseable { archive ->
+            def entry = archive.getEntry("META-INF/jarjar/${ponderCompileName}")
+            if (entry == null) {
+                throw new GradleException("Pinned Create artifact does not contain ${ponderCompileName}")
+            }
+            output.withOutputStream { target ->
+                archive.getInputStream(entry).withCloseable { source -> source.transferTo(target) }
+            }
+        }
+        String actual = java.security.MessageDigest.getInstance('SHA-256')
+                .digest(output.bytes).encodeHex().toString().toUpperCase(Locale.ROOT)
+        String expected = 'B94099A82D51FA378F6CE30D788CA3F8CF0699FE16BBB536B516B03025301A42'
+        if (actual != expected) {
+            output.delete()
+            throw new GradleException("Extracted Ponder checksum mismatch: ${actual}")
+        }
+    }
+}
+def ponderCompileFiles = files(ponderCompileJar)
+ponderCompileFiles.builtBy(extractPonderCompileJar)
 
 def ffmpegNativePlatforms = [
         'windows-x86_64',
@@ -168,18 +220,19 @@ dependencies {
     scriptEmbed 'org.mozilla:rhino:1.9.1'
     testImplementation('com.google.code.gson:gson:2.11.0') { transitive = false }
 
-    // MCEF is a required client mod, not shaded into MineScreen. The common artifact exposes its API;
-    // the NeoForge artifact is present in development runs and is installed separately by end users.
+    // MCEF is an optional client backend, never shaded into MineScreen. Runtime code reaches its
+    // API only through a delayed compatibility factory after the platform and mod are both probed.
     compileOnly 'com.cinemamod:mcef:2.1.6-1.21.1'
     mcefClientSmokeMod 'com.cinemamod:mcef-neoforge:2.1.6-1.21.1'
 
     // Optional Create carriage API. Client rendering and server timetable bridges are both loaded
     // reflectively, so neither side loads Create classes when the mod is absent.
-    compileOnly("com.simibubi.create:create-1.21.1:${create_version}") { transitive = false }
+    createCompileBundle("maven.modrinth:create:${create_modrinth_version}") { transitive = false }
+    compileOnly configurations.createCompileBundle.incoming.artifactView { }.files
     // StationBlockEntity inherits Ponder's VirtualBlockEntity. Keep this compile-only as well;
     // installed Create clients already provide it and dedicated servers without Create never load
     // the reflective bridge.
-    compileOnly('net.createmod.ponder:ponder-neoforge:1.0.81+mc1.21.1') { transitive = false }
+    compileOnly ponderCompileFiles
 
 }
 
@@ -318,6 +371,20 @@ tasks.register('packagedFfmpegProbe', JavaExec) {
     mainClass = 'dev.minescreen.client.video.PackagedFfmpegProbe'
 }
 
+tasks.register('externalFfmpegProbe', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath + clientProbeMinecraftClasspath + files(
+            layout.buildDirectory.file("moddev/artifacts/neoforge-${neo_version}-minecraft-merged.jar"))
+    mainClass = 'dev.minescreen.client.video.ExternalFfmpegVideoProbe'
+    if (providers.gradleProperty('externalFfmpegPath').isPresent()
+            && providers.gradleProperty('externalFfprobePath').isPresent()
+            && providers.gradleProperty('videoProbeSource').isPresent()) {
+        args providers.gradleProperty('externalFfmpegPath').get(),
+                providers.gradleProperty('externalFfprobePath').get(),
+                providers.gradleProperty('videoProbeSource').get()
+    }
+}
+
 tasks.register('profileSourceTest', JavaExec) {
     dependsOn testClasses
     classpath = sourceSets.test.runtimeClasspath
@@ -361,6 +428,12 @@ tasks.register('securityPolicyTest', JavaExec) {
     mainClass = 'dev.minescreen.network.SecurityPolicyTestHarness'
 }
 
+tasks.register('platformFingerprintTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.minescreen.client.compat.PlatformFingerprintTestHarness'
+}
+
 tasks.register('trainEtaEstimatorTest', JavaExec) {
     dependsOn testClasses
     classpath = sourceSets.test.runtimeClasspath
@@ -390,6 +463,7 @@ tasks.named('check').configure {
     dependsOn tasks.named('trafficImportTest')
     dependsOn tasks.named('trafficTemplateSyncTest')
     dependsOn tasks.named('securityPolicyTest')
+    dependsOn tasks.named('platformFingerprintTest')
     dependsOn tasks.named('trainEtaEstimatorTest')
     dependsOn tasks.named('releaseIntegrityTest')
     dependsOn tasks.named('lcdStudioSimulationTest')

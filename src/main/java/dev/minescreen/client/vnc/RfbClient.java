@@ -67,7 +67,7 @@ public final class RfbClient implements AutoCloseable {
     private DataOutputStream output;
     private Thread thread;
     private int buttonMask;
-    private final TightDecoder tightDecoder = new TightDecoder();
+    private final TightDecoder tightDecoder;
 
     public RfbClient(RfbEndpoint endpoint, String password) {
         this(endpoint, password, MineScreenConfig.VNC_COMPRESSION_LEVEL.get(),
@@ -82,6 +82,8 @@ public final class RfbClient implements AutoCloseable {
         this.jpegQuality = Math.max(0, Math.min(9, jpegQuality));
         this.maxFramebufferPixels = Math.max(1, maxFramebufferPixels);
         this.publishFrames = publishFrames;
+        tightDecoder = RfbEncodingCapabilities.jpegAvailable()
+                ? new TightDecoder() : null;
     }
 
     public void start() {
@@ -316,14 +318,18 @@ public final class RfbClient implements AutoCloseable {
     private synchronized void sendEncodings() throws IOException {
         output.writeByte(2);
         output.writeByte(0);
-        output.writeShort(7);
-        output.writeInt(ENCODING_TIGHT);
+        output.writeShort(tightDecoder == null ? 4 : 7);
+        if (tightDecoder != null) {
+            output.writeInt(ENCODING_TIGHT);
+        }
         output.writeInt(ENCODING_COPY_RECT);
         output.writeInt(ENCODING_RAW);
         output.writeInt(ENCODING_DESKTOP_SIZE);
         output.writeInt(ENCODING_LAST_RECT);
-        output.writeInt(ENCODING_COMPRESS_LEVEL_0 + compressionLevel);
-        output.writeInt(ENCODING_QUALITY_LEVEL_0 + jpegQuality);
+        if (tightDecoder != null) {
+            output.writeInt(ENCODING_COMPRESS_LEVEL_0 + compressionLevel);
+            output.writeInt(ENCODING_QUALITY_LEVEL_0 + jpegQuality);
+        }
         output.flush();
     }
 
@@ -594,6 +600,8 @@ public final class RfbClient implements AutoCloseable {
         while ((update = updates.poll()) != null) {
             update.close();
         }
-        tightDecoder.close();
+        if (tightDecoder != null) {
+            tightDecoder.close();
+        }
     }
 }

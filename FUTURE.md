@@ -101,6 +101,14 @@ own future features and does not promise WebDisplays behavior parity.
 - 改进服务器时钟偏差估计、RTT补偿和小幅播放速率校正，减少视频硬seek。
 - P2P不可用时始终保留客户端直连内容源的安全回退。
 
+### NAT 穿透与独立中继（v1.2.0 不实现）
+
+- 后续评估 ICE、STUN、TURN 与 QUIC/WebRTC 连接协商；v1.2.0 现有 P2P 默认关闭，兼容模式也不会自动启用它。
+- 研究独立画面中继服务，使 20 Mbps/FRP 游戏服务器不承担网页或 VNC 画面转发；服务端仍只同步状态与时间轴。
+- 设计中必须明确提示公网/局域网地址暴露、节点上行消耗、TURN 费用、内容隐私和滥用风险，并支持管理员完全禁用。
+- 第三方 STUN/TURN、浏览器、编解码器及下载源须接受许可证、供应链和地区法律审查，不由客户端静默下载。
+- 移动端动态 WEB 若未来恢复，优先采用启动器/平台提供的原生 WebView 桥，而不是为每个平台私自打包一套 CEF。
+
 ## UI与可访问性
 
 - 继续扩展 `MineScreenUiProvider`，允许Otyacraft Engine Renewed等UI框架通过适配器接管外观。

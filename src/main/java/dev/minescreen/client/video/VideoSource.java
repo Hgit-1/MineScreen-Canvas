@@ -6,7 +6,7 @@ import java.nio.file.Path;
 import java.util.Locale;
 
 import dev.minescreen.client.ClientSecurityPolicy;
-import dev.minescreen.client.web.BrowserRequestPolicy;
+import dev.minescreen.client.web.NetworkRequestPolicy;
 
 /** A validated FFmpeg input. The original URL is client-local and is never a media id. */
 public record VideoSource(String ffmpegInput, Kind kind, Path localPath) {
@@ -41,7 +41,7 @@ public record VideoSource(String ffmpegInput, Kind kind, Path localPath) {
                     throw new ValidationException(Problem.INVALID_URL,
                             "Video URL does not contain a valid host");
                 }
-                if (!BrowserRequestPolicy.isAllowed(source)) {
+                if (!NetworkRequestPolicy.isAllowed(source)) {
                     throw new ValidationException(Problem.BLOCKED_URL,
                             "Video URL is blocked by the current network policy");
                 }

@@ -248,8 +248,14 @@ public final class ReleaseIntegrityTestHarness {
             require(metadata.contains("version=\"" + version + "\""),
                     "neoforge.mods.toml version does not match " + version);
             require(!metadata.contains("${"), "unexpanded metadata placeholder in distribution");
-            require(metadata.contains("modId=\"mcef\"") && metadata.contains("side=\"CLIENT\""),
-                    "MCEF must remain a client-only dependency");
+            int mcefDependency = metadata.indexOf("modId=\"mcef\"");
+            require(mcefDependency >= 0 && metadata.substring(mcefDependency,
+                            Math.min(metadata.length(), mcefDependency + 256))
+                            .contains("type=\"optional\"")
+                            && metadata.substring(mcefDependency,
+                            Math.min(metadata.length(), mcefDependency + 256))
+                            .contains("side=\"CLIENT\""),
+                    "MCEF must remain an optional client-only dependency");
             int createDependency = metadata.indexOf("modId=\"create\"");
             require(createDependency >= 0 && metadata.substring(createDependency,
                             Math.min(metadata.length(), createDependency + 256))
