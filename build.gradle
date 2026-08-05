@@ -46,13 +46,16 @@ repositories {
             includeGroup 'com.cinemamod'
         }
     }
+    // Use Create's published Modrinth artifact for the optional compile-time API. The upstream
+    // Create Maven occasionally serves an incomplete TLS chain to clean JDK trust stores (notably
+    // GitHub's Windows runners). Modrinth is already an official Create distribution channel and
+    // avoids weakening Gradle's TLS verification or importing an untrusted certificate.
     exclusiveContent {
         forRepository {
-            maven { url = 'https://maven.createmod.net' }
+            maven { url = 'https://api.modrinth.com/maven' }
         }
         filter {
-            includeGroup 'com.simibubi.create'
-            includeGroup 'net.createmod.ponder'
+            includeGroup 'maven.modrinth'
         }
     }
 }
@@ -145,7 +148,46 @@ configurations {
         canBeResolved = true
         transitive = false
     }
+    createCompileBundle {
+        canBeConsumed = false
+        canBeResolved = true
+        transitive = false
+    }
 }
+
+// Ponder is nested inside the official Create distribution. Extract that exact pinned nested jar
+// for javac instead of contacting a second Maven coordinate. It remains compile-only and is never
+// packaged into MineScreen; an installed Create mod supplies Ponder at runtime.
+def ponderCompileVersion = '1.0.81+mc1.21.1'
+def ponderCompileName = "ponder-neoforge-${ponderCompileVersion}.jar"
+def ponderCompileJar = layout.buildDirectory.file("compile-dependencies/${ponderCompileName}")
+def extractPonderCompileJar = tasks.register('extractPonderCompileJar') {
+    inputs.files(configurations.createCompileBundle)
+    outputs.file(ponderCompileJar)
+    doLast {
+        File createJar = configurations.createCompileBundle.singleFile
+        File output = ponderCompileJar.get().asFile
+        output.parentFile.mkdirs()
+        new java.util.zip.ZipFile(createJar).withCloseable { archive ->
+            def entry = archive.getEntry("META-INF/jarjar/${ponderCompileName}")
+            if (entry == null) {
+                throw new GradleException("Pinned Create artifact does not contain ${ponderCompileName}")
+            }
+            output.withOutputStream { target ->
+                archive.getInputStream(entry).withCloseable { source -> source.transferTo(target) }
+            }
+        }
+        String actual = java.security.MessageDigest.getInstance('SHA-256')
+                .digest(output.bytes).encodeHex().toString().toUpperCase(Locale.ROOT)
+        String expected = 'B94099A82D51FA378F6CE30D788CA3F8CF0699FE16BBB536B516B03025301A42'
+        if (actual != expected) {
+            output.delete()
+            throw new GradleException("Extracted Ponder checksum mismatch: ${actual}")
+        }
+    }
+}
+def ponderCompileFiles = files(ponderCompileJar)
+ponderCompileFiles.builtBy(extractPonderCompileJar)
 
 def ffmpegNativePlatforms = [
         'windows-x86_64',
@@ -185,11 +227,12 @@ dependencies {
 
     // Optional Create carriage API. Client rendering and server timetable bridges are both loaded
     // reflectively, so neither side loads Create classes when the mod is absent.
-    compileOnly("com.simibubi.create:create-1.21.1:${create_version}") { transitive = false }
+    createCompileBundle("maven.modrinth:create:${create_modrinth_version}") { transitive = false }
+    compileOnly configurations.createCompileBundle.incoming.artifactView { }.files
     // StationBlockEntity inherits Ponder's VirtualBlockEntity. Keep this compile-only as well;
     // installed Create clients already provide it and dedicated servers without Create never load
     // the reflective bridge.
-    compileOnly('net.createmod.ponder:ponder-neoforge:1.0.81+mc1.21.1') { transitive = false }
+    compileOnly ponderCompileFiles
 
 }
 
