@@ -462,7 +462,8 @@ public final class CeilingDisplayRenderer implements BlockEntityRenderer<Ceiling
             double x = node.x() * scale + offsetX;
             double y = node.y() * scale + offsetY;
             double radius = Math.max(1.1D, Math.min(2.6D, scale * 0.09D));
-            logicalQuad(geometry, pose, x - radius, y - radius, x + radius, y + radius,
+            logicalQuad(buffers.getBuffer(RenderType.textBackground()), pose,
+                    x - radius, y - radius, x + radius, y + radius,
                     template.accentColor());
             if (index % labelStride == 0 && !node.name().isBlank()) {
                 String name = font.plainSubstrByWidth(node.name(), Math.max(18, width / 6));
@@ -478,7 +479,6 @@ public final class CeilingDisplayRenderer implements BlockEntityRenderer<Ceiling
     private void renderScriptTraffic(CeilingDisplayBlockEntity display, int side,
             TrafficTemplateRepository.Template template, TrafficValues values, int width,
             int height, PoseStack poseStack, MultiBufferSource buffers) {
-        VertexConsumer geometry = buffers.getBuffer(RenderType.textBackground());
         int order = 0;
         for (TrafficTemplateRepository.SceneElement element : template.scene()) {
             poseStack.pushPose();
@@ -487,14 +487,14 @@ public final class CeilingDisplayRenderer implements BlockEntityRenderer<Ceiling
             double x = element.x() * width;
             double y = element.y() * height;
             switch (element.type()) {
-                case "rect" -> logicalQuad(geometry, pose, x, y,
+                case "rect" -> logicalQuad(buffers.getBuffer(RenderType.textBackground()), pose, x, y,
                         x + element.width() * width, y + element.height() * height, element.color());
-                case "ellipse" -> logicalEllipse(geometry, pose,
+                case "ellipse" -> logicalEllipse(buffers.getBuffer(RenderType.textBackground()), pose,
                         x + element.width() * width * 0.5D,
                         y + element.height() * height * 0.5D,
                         element.width() * width * 0.5D,
                         element.height() * height * 0.5D, element.color());
-                case "line" -> logicalLine(geometry, pose, x, y, element.x2() * width,
+                case "line" -> logicalLine(buffers.getBuffer(RenderType.textBackground()), pose, x, y, element.x2() * width,
                         element.y2() * height, Math.max(0.75D, element.size()), element.color());
                 case "text" -> {
                     String value = expand(element.text(), display, side, template, values);

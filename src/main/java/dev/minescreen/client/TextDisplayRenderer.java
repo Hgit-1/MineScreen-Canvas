@@ -202,6 +202,11 @@ public final class TextDisplayRenderer implements BlockEntityRenderer<TextDispla
         return new AABB(minX, minY, minZ, maxX, maxY, maxZ).inflate(0.08D);
     }
 
+    @Override
+    public int getViewDistance() {
+        return dev.minescreen.MineScreenConfig.MAX_RENDER_DISTANCE.get();
+    }
+
     private void renderStatic(String text, int color, float sizeFactor, int canvasWidth,
             int canvasHeight, PoseStack poseStack, MultiBufferSource buffers) {
         int logicalWidth = Math.max(1, Math.round(canvasWidth / sizeFactor));
@@ -509,7 +514,8 @@ public final class TextDisplayRenderer implements BlockEntityRenderer<TextDispla
                     poseStack, buffers);
         }
 
-        line2d(geometry, pose, 6, Math.max(50, height - 25), width - 6,
+        line2d(buffers.getBuffer(RenderType.textBackground()), pose, 6,
+                Math.max(50, height - 25), width - 6,
                 Math.max(50, height - 25), 1.0D, 0xFF4B5968);
         List<String> stops = train.upcomingStops().stream()
                 .map(stop -> TrafficTemplateRepository.mappedStationName(templateId, stop))
@@ -587,23 +593,28 @@ public final class TextDisplayRenderer implements BlockEntityRenderer<TextDispla
                 logicalWidth - nowWidth - 5,
                 5.0F, 0xFFDCE7F3,
                 poseStack, buffers);
+        int minRowHeight = font.lineHeight * 2 + 3;
+        int remainingHeight = Math.max(minRowHeight,
+                Math.round(logicalHeight - headerHeight - 3.0F));
+        int maxVisibleRows = Math.min(4, Math.max(1, remainingHeight / minRowHeight));
         List<CreateTrainScheduleService.Departure> visibleDepartures =
                 snapshot.departures().stream()
                         .filter(departure -> departure.dwelling()
                                 || departure.etaKnown()
                                 && departure.etaTicks() <= 90L * 20L)
-                        .limit(4).toList();
-        int remainingHeight = Math.max(font.lineHeight * 2 + 3,
-                Math.round(logicalHeight - headerHeight - 3.0F));
-        int rowHeight = Math.max(font.lineHeight * 2 + 3,
+                        .limit(maxVisibleRows).toList();
+        int rowHeight = Math.max(minRowHeight,
                 remainingHeight / Math.max(1, visibleDepartures.size()));
         int rowY = Math.round(headerHeight + 3.0F);
+        int maxBottomY = logicalHeight - 1;
         if (snapshot.departures().isEmpty()) {
+            float bodyScale = logicalHeight < 110 ? 0.85F : 1.0F;
+            float nextY = rowY + Math.round(font.lineHeight * 1.05F) + 3.0F;
             if (snapshot.stationName().isBlank()) {
                 drawScaled(Component.translatable("screen.minescreen.station.not_found")
                         .getVisualOrderText(), 6, rowY, color, 1.05F, poseStack, buffers);
                 drawWrappedWorld(Component.translatable("screen.minescreen.station.bind_help"),
-                        6, rowY + font.lineHeight + 6, logicalWidth - 12, 4, color,
+                        6, nextY, logicalWidth - 12, 4, maxBottomY, bodyScale, color,
                         poseStack, buffers);
                 return;
             }
@@ -619,20 +630,24 @@ public final class TextDisplayRenderer implements BlockEntityRenderer<TextDispla
                 case NO_STATION_PREDICTIONS, AVAILABLE -> Component.translatable(
                         "screen.minescreen.station.no_station_predictions");
             };
-            drawWrappedWorld(reason, 6, rowY + font.lineHeight + 6, logicalWidth - 12, 3,
-                    color, poseStack, buffers);
+            nextY = drawWrappedWorld(reason, 6, nextY, logicalWidth - 12, 3,
+                    maxBottomY, bodyScale, color, poseStack, buffers);
             drawWrappedWorld(Component.translatable("screen.minescreen.station.schedule_help"),
-                    6, rowY + font.lineHeight * 4 + 8, logicalWidth - 12, 3, color,
-                    poseStack, buffers);
+                    6, nextY + 2.0F, logicalWidth - 12, 3, maxBottomY, bodyScale,
+                    0xFFB5C2D0, poseStack, buffers);
             return;
         }
         if (visibleDepartures.isEmpty()) {
             drawWrappedWorld(Component.translatable(
                     "screen.minescreen.station.no_arrivals_in_window"),
-                    6, rowY, logicalWidth - 12, 3, 0xFF9FB0C2, poseStack, buffers);
+                    6, rowY, logicalWidth - 12, 3, maxBottomY, 1.0F, 0xFF9FB0C2,
+                    poseStack, buffers);
             return;
         }
         // Draw the title/row separators before text. Their z value remains behind every glyph.
+        // Re-acquire the textBackground buffer because earlier font.drawInBatch calls flush
+        // non-fixed buffers in MultiBufferSource.BufferSource.
+        stationGeometry = buffers.getBuffer(RenderType.textBackground());
         quad2d(stationGeometry, stationPose, 5, rowY - 2, logicalWidth - 5, rowY - 1,
                 0xFF465363);
         for (int index = 1; index < visibleDepartures.size(); index++) {
@@ -838,7 +853,8 @@ public final class TextDisplayRenderer implements BlockEntityRenderer<TextDispla
                     * (current ? 1.65D : target ? 1.35D : 1.0D);
             int nodeColor = current ? 0xFFFFD43B : target ? 0xFF62E6A7
                     : template.accentColor();
-            quad2d(geometry, pose, x - radius, y - radius, x + radius, y + radius,
+            quad2d(buffers.getBuffer(RenderType.textBackground()), pose,
+                    x - radius, y - radius, x + radius, y + radius,
                     nodeColor);
             if (index % labelStride == 0 && !node.name().isBlank()) {
                 String label = font.plainSubstrByWidth(node.name(), Math.max(20, logicalWidth / 5));
@@ -894,7 +910,6 @@ public final class TextDisplayRenderer implements BlockEntityRenderer<TextDispla
             TrafficTemplateRepository.Template template, int logicalWidth, int logicalHeight,
             MovingStructureCompat.CarriageTrainStatus train,
             PoseStack poseStack, MultiBufferSource buffers) {
-        VertexConsumer geometry = buffers.getBuffer(RenderType.textBackground());
         int order = 0;
         for (TrafficTemplateRepository.SceneElement element : template.scene()) {
             // A generated scene is painter-ordered: a full-canvas background is commonly
@@ -909,15 +924,15 @@ public final class TextDisplayRenderer implements BlockEntityRenderer<TextDispla
             double x = element.x() * logicalWidth;
             double y = element.y() * logicalHeight;
             switch (element.type()) {
-                case "rect" -> quad2d(geometry, pose, x, y,
+                case "rect" -> quad2d(buffers.getBuffer(RenderType.textBackground()), pose, x, y,
                         x + element.width() * logicalWidth,
                         y + element.height() * logicalHeight, element.color());
-                case "ellipse" -> ellipse2d(geometry, pose,
+                case "ellipse" -> ellipse2d(buffers.getBuffer(RenderType.textBackground()), pose,
                         x + element.width() * logicalWidth * 0.5D,
                         y + element.height() * logicalHeight * 0.5D,
                         element.width() * logicalWidth * 0.5D,
                         element.height() * logicalHeight * 0.5D, element.color());
-                case "line" -> line2d(geometry, pose, x, y,
+                case "line" -> line2d(buffers.getBuffer(RenderType.textBackground()), pose, x, y,
                         element.x2() * logicalWidth, element.y2() * logicalHeight,
                         Math.max(0.75D, element.size()), element.color());
                 case "text" -> {
@@ -1143,13 +1158,24 @@ public final class TextDisplayRenderer implements BlockEntityRenderer<TextDispla
                 right - font.width(safe) * scale, y, color, scale, poseStack, buffers);
     }
 
-    private void drawWrappedWorld(Component text, float x, float y, int maximumWidth,
-            int maximumLines, int color, PoseStack poseStack, MultiBufferSource buffers) {
-        List<FormattedCharSequence> lines = font.split(text, Math.max(1, maximumWidth));
+    private float drawWrappedWorld(Component text, float x, float y, int maximumWidth,
+            int maximumLines, int maxBottomY, float scale, int color, PoseStack poseStack,
+            MultiBufferSource buffers) {
+        float safeScale = Math.max(0.45F, scale);
+        int splitWidth = Math.max(1, Math.round(maximumWidth / safeScale));
+        List<FormattedCharSequence> lines = font.split(text, splitWidth);
         int count = Math.min(Math.max(1, maximumLines), lines.size());
+        float lineHeightScaled = font.lineHeight * safeScale;
+        float lineStep = Math.max(1.0F, lineHeightScaled + 1.0F);
+        float currentY = y;
         for (int index = 0; index < count; index++) {
-            draw(lines.get(index), x, y + index * font.lineHeight, color, poseStack, buffers);
+            if (currentY + lineHeightScaled > maxBottomY) {
+                break;
+            }
+            drawScaled(lines.get(index), x, currentY, color, safeScale, poseStack, buffers);
+            currentY += lineStep;
         }
+        return currentY;
     }
 
     private void drawVertical(String value, String align, int color, boolean bold,

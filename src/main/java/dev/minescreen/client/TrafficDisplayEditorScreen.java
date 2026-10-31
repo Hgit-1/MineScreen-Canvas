@@ -79,7 +79,9 @@ public final class TrafficDisplayEditorScreen extends ResponsiveMineScreen {
     private Button mapModeButton;
     private Button bindStationButton;
     private Button clearBindingButton;
+    private Button scanRadiusButton;
     private Button roleButton;
+    private static final int[] SCAN_RADIUS_STEPS = {32, 64, 128, 256, 512};
     private TextDisplayAnimation animation;
     private int fontSize;
     private DisplayBackMode backMode;
@@ -183,14 +185,17 @@ public final class TrafficDisplayEditorScreen extends ResponsiveMineScreen {
         mapModeButton = addRenderableWidget(MineScreenButton.create(Component.empty(),
                 button -> selectStationMode(StationDisplayMode.STATION_MAP),
                 left + 24 + modeWidth * 2, contentTop, inner - modeWidth * 2 - 8, 20));
-        stationBinding = field(left + 16, contentTop + 38, inner - 264,
+        stationBinding = field(left + 16, contentTop + 38, inner - 360,
                 "screen.minescreen.traffic.station_binding", initial.stationBindingName(backSide));
         bindStationButton = addRenderableWidget(MineScreenButton.create(
                 Component.translatable("screen.minescreen.traffic.scan_bind"),
-                button -> bindNearestStation(), left + panelWidth - 272, contentTop + 38, 166, 18));
+                button -> bindNearestStation(), left + panelWidth - 368, contentTop + 38, 166, 18));
         clearBindingButton = addRenderableWidget(MineScreenButton.create(
                 Component.translatable("screen.minescreen.traffic.clear_binding"),
-                button -> clearStationBinding(), left + panelWidth - 102, contentTop + 38, 86, 18));
+                button -> clearStationBinding(), left + panelWidth - 198, contentTop + 38, 86, 18));
+        scanRadiusButton = addRenderableWidget(MineScreenButton.create(
+                scanRadiusLabel(),
+                button -> cycleScanRadius(), left + panelWidth - 108, contentTop + 38, 92, 18));
         stationTurnaround = field(left + 24 + half, contentTop + 68, half,
                 "screen.minescreen.traffic.station_turnaround",
                 initial.stationTurnaroundName(backSide));
@@ -483,12 +488,14 @@ public final class TrafficDisplayEditorScreen extends ResponsiveMineScreen {
         stationBinding.setEditable(needsStation);
         bindStationButton.visible = bindStationButton.active = setupPage;
         bindStationButton.setMessage(setupActionLabel());
-        bindStationButton.setX(needsStation ? left + panelWidth - 272 : left + 16);
+        bindStationButton.setX(needsStation ? left + panelWidth - 368 : left + 16);
         bindStationButton.setWidth(needsStation ? 166 : panelWidth - 32);
         bindStationButton.active = setupPage && needsStation;
         clearBindingButton.visible = setupPage && needsStation;
         clearBindingButton.active = setupPage && needsStation
                 && !stationBinding.getValue().isBlank();
+        scanRadiusButton.visible = scanRadiusButton.active = setupPage && needsStation;
+        scanRadiusButton.setMessage(scanRadiusLabel());
         stationTurnaround.visible = advancedPage;
         stationTurnaround.setX(platform ? left + 24 + (panelWidth - 40) / 2 : left + 16);
         stationTurnaround.setWidth(platform ? (panelWidth - 40) / 2 : panelWidth - 32);
@@ -935,6 +942,29 @@ public final class TrafficDisplayEditorScreen extends ResponsiveMineScreen {
         error = Component.translatable("screen.minescreen.traffic.binding_cleared");
         messageColor = 0xFFFFC26B;
         refreshStationSuggestions();
+    }
+
+    private void cycleScanRadius() {
+        int currentRadius = MineScreenConfig.CREATE_STATION_SCAN_RADIUS.get();
+        int nextRadius = SCAN_RADIUS_STEPS[0];
+        for (int step : SCAN_RADIUS_STEPS) {
+            if (step > currentRadius) {
+                nextRadius = step;
+                break;
+            }
+        }
+        MineScreenConfig.CREATE_STATION_SCAN_RADIUS.set(nextRadius);
+        MineScreenConfig.SPEC.save();
+        TrafficStationLocator.clearCache();
+        scanRadiusButton.setMessage(scanRadiusLabel());
+        error = Component.translatable("screen.minescreen.traffic.scan_radius_changed", nextRadius);
+        messageColor = 0xFF4AA8FF;
+        refreshStationSuggestions();
+    }
+
+    private Component scanRadiusLabel() {
+        return Component.translatable("screen.minescreen.traffic.scan_radius",
+                MineScreenConfig.CREATE_STATION_SCAN_RADIUS.get());
     }
 
     private Component departureDiagnostic(CreateTrainScheduleService.Snapshot snapshot) {

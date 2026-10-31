@@ -112,7 +112,7 @@ public final class MineScreenNetwork {
                 || payload.turnaroundStation().length() > 128
                 || player.distanceToSqr(payload.stationPos().getX() + 0.5D,
                         payload.stationPos().getY() + 0.5D,
-                        payload.stationPos().getZ() + 0.5D) > 65_536.0D) {
+                        payload.stationPos().getZ() + 0.5D) > 1_048_576.0D) {
             return;
         }
         var snapshot = dev.minescreen.compat.CreateTrainScheduleServerCompat.snapshot(level,

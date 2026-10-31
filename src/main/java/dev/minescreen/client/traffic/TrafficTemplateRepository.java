@@ -868,7 +868,8 @@ public final class TrafficTemplateRepository {
                 stringList(binding, "aliases", 32, 96),
                 limited(string(binding, "dimension", "minecraft:overworld"), 128),
                 number(binding, "x", 0), number(binding, "y", 0), number(binding, "z", 0),
-                Math.max(0, Math.min(128, number(binding, "radius", 12))),
+                Math.max(0, Math.min(TrafficStationLocator.MAX_SCAN_RADIUS,
+                        number(binding, "radius", 12))),
                 bool(binding, "auto_create_platform", false));
         Map<String, String> stationBindings = new HashMap<>();
         if (json.has("station_bindings") && json.get("station_bindings").isJsonObject()) {

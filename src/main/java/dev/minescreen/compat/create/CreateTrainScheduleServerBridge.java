@@ -52,7 +52,8 @@ public final class CreateTrainScheduleServerBridge
     @Override
     public CreateTrainScheduleServerCompat.Snapshot snapshot(ServerLevel level, BlockPos stationPos,
             String trainType, String turnaroundStation, int maximum) {
-        if (!(level.getBlockEntity(stationPos) instanceof StationBlockEntity blockEntity)) {
+        if (!level.isLoaded(stationPos)
+                || !(level.getBlockEntity(stationPos) instanceof StationBlockEntity blockEntity)) {
             return CreateTrainScheduleServerCompat.Snapshot.EMPTY;
         }
         GlobalStation station = blockEntity.getStation();

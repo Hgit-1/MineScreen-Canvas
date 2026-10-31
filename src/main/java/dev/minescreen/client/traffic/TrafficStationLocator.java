@@ -21,10 +21,12 @@ import net.neoforged.fml.ModList;
  * Cached, optional Create station lookup for LCD Studio coordinate bindings.
  *
  * <p>The integration intentionally uses a class-name boundary so a dedicated server or client
- * without Create never resolves Create classes. A lookup scans at most a 33x33x33 cube and is
- * cached for five seconds; it must never run from the render loop without this cache.</p>
+ * without Create never resolves Create classes. Lookups inspect only loaded chunk block-entity maps
+ * within the configured radius and are cached for five seconds; they must never run uncached per
+ * rendered frame.</p>
  */
 public final class TrafficStationLocator {
+    public static final int MAX_SCAN_RADIUS = 512;
     private static final String CREATE_STATION =
             "com.simibubi.create.content.trains.station.StationBlockEntity";
     private static final long CACHE_TICKS = 100L;
@@ -34,6 +36,12 @@ public final class TrafficStationLocator {
             new WeakHashMap<>();
 
     private TrafficStationLocator() {
+    }
+
+    /** Clears cached station lookups so an updated scan radius takes effect immediately. */
+    public static void clearCache() {
+        CACHE.clear();
+        NEARBY_CACHE.clear();
     }
 
     /** Lets the editor distinguish a missing Create installation from an empty scan result. */
@@ -62,7 +70,7 @@ public final class TrafficStationLocator {
     public static StationMatch resolveNearby(Level level, BlockPos displayPos, String preferredName,
             int radius) {
         if (level == null || displayPos == null || !ModList.get().isLoaded("create")) return null;
-        int safeRadius = Math.max(2, Math.min(32, radius));
+        int safeRadius = Math.max(2, Math.min(MAX_SCAN_RADIUS, radius));
         NearbyKey key = new NearbyKey(displayPos.immutable(), normalize(preferredName), safeRadius);
         long now = level.getGameTime();
         Map<NearbyKey, CachedMatch> cache = NEARBY_CACHE.computeIfAbsent(level,
@@ -88,16 +96,11 @@ public final class TrafficStationLocator {
         if (level == null || displayPos == null || !ModList.get().isLoaded("create")) {
             return List.of();
         }
-        int safeRadius = Math.max(2, Math.min(32, radius));
+        int safeRadius = Math.max(2, Math.min(MAX_SCAN_RADIUS, radius));
         Vec3 point = Vec3.atCenterOf(displayPos);
         Map<String, StationMatch> unique = new HashMap<>();
-        for (BlockPos cursor : BlockPos.betweenClosed(
-                displayPos.offset(-safeRadius, -safeRadius, -safeRadius),
-                displayPos.offset(safeRadius, safeRadius, safeRadius))) {
-            if (!level.hasChunk(net.minecraft.core.SectionPos.blockToSectionCoord(cursor.getX()),
-                    net.minecraft.core.SectionPos.blockToSectionCoord(cursor.getZ()))) continue;
-            BlockEntity candidate = level.getBlockEntity(cursor);
-            if (!isCreateStation(candidate)) continue;
+        for (BlockEntity candidate : stationBlockEntitiesInCube(level, displayPos, safeRadius)) {
+            BlockPos cursor = candidate.getBlockPos();
             String createName = stationName(candidate);
             double distance = point.distanceTo(Vec3.atCenterOf(cursor));
             String key = normalize(createName);
@@ -115,15 +118,11 @@ public final class TrafficStationLocator {
 
     private static StationMatch scan(Level level, CoordinateBinding binding) {
         Vec3 point = new Vec3(binding.x(), binding.y(), binding.z());
-        int radius = Math.max(1, Math.min(16, (int) Math.ceil(binding.radius())));
+        int radius = Math.max(1, Math.min(MAX_SCAN_RADIUS, (int) Math.ceil(binding.radius())));
         BlockPos center = BlockPos.containing(point);
         StationMatch nearest = null;
-        for (BlockPos cursor : BlockPos.betweenClosed(center.offset(-radius, -radius, -radius),
-                center.offset(radius, radius, radius))) {
-            if (!level.hasChunk(net.minecraft.core.SectionPos.blockToSectionCoord(cursor.getX()),
-                    net.minecraft.core.SectionPos.blockToSectionCoord(cursor.getZ()))) continue;
-            BlockEntity candidate = level.getBlockEntity(cursor);
-            if (!isCreateStation(candidate)) continue;
+        for (BlockEntity candidate : stationBlockEntitiesInCube(level, center, radius)) {
+            BlockPos cursor = candidate.getBlockPos();
             String createName = stationName(candidate);
             if (!matchesConfiguredName(createName, binding)) continue;
             double distance = point.distanceTo(Vec3.atCenterOf(cursor));
@@ -140,12 +139,8 @@ public final class TrafficStationLocator {
         Vec3 point = Vec3.atCenterOf(displayPos);
         StationMatch nearest = null;
         StationMatch nearestPreferred = null;
-        for (BlockPos cursor : BlockPos.betweenClosed(displayPos.offset(-radius, -radius, -radius),
-                displayPos.offset(radius, radius, radius))) {
-            if (!level.hasChunk(net.minecraft.core.SectionPos.blockToSectionCoord(cursor.getX()),
-                    net.minecraft.core.SectionPos.blockToSectionCoord(cursor.getZ()))) continue;
-            BlockEntity candidate = level.getBlockEntity(cursor);
-            if (!isCreateStation(candidate)) continue;
+        for (BlockEntity candidate : stationBlockEntitiesInCube(level, displayPos, radius)) {
+            BlockPos cursor = candidate.getBlockPos();
             String createName = stationName(candidate);
             double distance = point.distanceTo(Vec3.atCenterOf(cursor));
             StationMatch match = new StationMatch(cursor.immutable(), createName, distance,
@@ -157,6 +152,31 @@ public final class TrafficStationLocator {
             }
         }
         return nearestPreferred == null ? nearest : nearestPreferred;
+    }
+
+    private static List<BlockEntity> stationBlockEntitiesInCube(Level level, BlockPos center,
+            int radius) {
+        List<BlockEntity> stations = new ArrayList<>();
+        int minChunkX = net.minecraft.core.SectionPos.blockToSectionCoord(center.getX() - radius);
+        int maxChunkX = net.minecraft.core.SectionPos.blockToSectionCoord(center.getX() + radius);
+        int minChunkZ = net.minecraft.core.SectionPos.blockToSectionCoord(center.getZ() - radius);
+        int maxChunkZ = net.minecraft.core.SectionPos.blockToSectionCoord(center.getZ() + radius);
+        for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
+            for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
+                if (!level.hasChunk(chunkX, chunkZ)) continue;
+                for (BlockEntity candidate
+                        : level.getChunk(chunkX, chunkZ).getBlockEntities().values()) {
+                    if (!isCreateStation(candidate)) continue;
+                    BlockPos pos = candidate.getBlockPos();
+                    if (Math.abs(pos.getX() - center.getX()) <= radius
+                            && Math.abs(pos.getY() - center.getY()) <= radius
+                            && Math.abs(pos.getZ() - center.getZ()) <= radius) {
+                        stations.add(candidate);
+                    }
+                }
+            }
+        }
+        return stations;
     }
 
     private static boolean isCreateStation(BlockEntity candidate) {

@@ -68,7 +68,8 @@ public final class CreateTrainScheduleService {
         String explicit = explicitStationName == null ? "" : explicitStationName.trim();
         TrafficStationLocator.StationMatch match = null;
         if (!explicit.isBlank()) {
-            match = TrafficStationLocator.resolveNamedNearby(level, displayPos, explicit, radius);
+            match = TrafficStationLocator.resolveNamedNearby(level, displayPos, explicit,
+                    Math.max(radius, TrafficStationLocator.MAX_SCAN_RADIUS));
             // An explicit editor selection is authoritative. Falling through to some other nearby
             // station makes the UI appear to ignore the saved binding and can show departures for
             // the wrong platform when two Create stations are close together.
