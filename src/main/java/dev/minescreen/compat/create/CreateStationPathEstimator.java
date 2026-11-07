@@ -1,7 +1,9 @@
 package dev.minescreen.compat.create;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.PriorityQueue;
@@ -25,6 +27,7 @@ public final class CreateStationPathEstimator {
     private static final double UNREACHABLE = Double.POSITIVE_INFINITY;
     private static final int MAX_CACHE_ENTRIES = 4_096;
     private static final Map<PathKey, Double> CACHE = new ConcurrentHashMap<>();
+    private static final Map<PathKey, List<String>> INTERMEDIATE_CACHE = new ConcurrentHashMap<>();
 
     private CreateStationPathEstimator() {
     }
@@ -62,24 +65,123 @@ public final class CreateStationPathEstimator {
         return calculated;
     }
 
+    /**
+     * Returns the ordered names of intermediate {@link GlobalStation}s physically bypassed along
+     * the shortest directed rail path from {@code from} to {@code to}.
+     */
+    public static List<String> intermediateStations(TrackGraph graph, GlobalStation from,
+            GlobalStation to) {
+        if (graph == null || from == null || to == null
+                || from.id == null || to.id == null
+                || from.id.equals(to.id)) {
+            return List.of();
+        }
+        PathKey key = new PathKey(graph.id, graph.getChecksum(), from.id, to.id);
+        List<String> cached = INTERMEDIATE_CACHE.get(key);
+        if (cached != null) return cached;
+        double totalDist = distance(graph, from, to);
+        if (!Double.isFinite(totalDist) || totalDist <= 1.0D) {
+            INTERMEDIATE_CACHE.put(key, List.of());
+            return List.of();
+        }
+        String fromBase = baseStationName(from.name);
+        String toBase = baseStationName(to.name);
+        double tolerance = Math.max(8.0D, totalDist * 0.06D);
+        record Candidate(String name, String base, double distFromStart) {}
+        List<Candidate> found = new ArrayList<>();
+        for (GlobalStation station : graph.getPoints(EdgePointType.STATION)) {
+            if (station == null || station.id == null
+                    || station.id.equals(from.id) || station.id.equals(to.id)) {
+                continue;
+            }
+            String rawName = station.name == null ? "" : station.name.trim();
+            if (rawName.isBlank()) continue;
+            String base = baseStationName(rawName);
+            if (base.isBlank() || base.equalsIgnoreCase(fromBase)
+                    || base.equalsIgnoreCase(toBase)) {
+                continue;
+            }
+            double d1 = distance(graph, from, station);
+            if (!Double.isFinite(d1) || d1 <= 0.5D || d1 >= totalDist - 0.5D) continue;
+            double d2 = distance(graph, station, to);
+            if (!Double.isFinite(d2) || d2 <= 0.5D) continue;
+            if (Math.abs((d1 + d2) - totalDist) <= tolerance) {
+                found.add(new Candidate(rawName, base, d1));
+            }
+        }
+        if (found.isEmpty()) {
+            if (INTERMEDIATE_CACHE.size() >= MAX_CACHE_ENTRIES) INTERMEDIATE_CACHE.clear();
+            INTERMEDIATE_CACHE.put(key, List.of());
+            return List.of();
+        }
+        found.sort(Comparator.comparingDouble(Candidate::distFromStart));
+        List<String> result = new ArrayList<>();
+        List<String> seenBases = new ArrayList<>();
+        for (Candidate c : found) {
+            boolean duplicateBase = false;
+            for (String existing : seenBases) {
+                if (existing.equalsIgnoreCase(c.base())) {
+                    duplicateBase = true;
+                    break;
+                }
+            }
+            if (!duplicateBase) {
+                seenBases.add(c.base());
+                result.add(c.name());
+            }
+        }
+        List<String> immutable = List.copyOf(result);
+        if (INTERMEDIATE_CACHE.size() >= MAX_CACHE_ENTRIES) INTERMEDIATE_CACHE.clear();
+        INTERMEDIATE_CACHE.put(key, immutable);
+        return immutable;
+    }
+
+    private static String baseStationName(String name) {
+        if (name == null || name.isBlank()) return "";
+        String stripped = name.replaceAll(
+                "(?iu)\\s*(上行|下行|上り|下り|upbound|downbound)\\s*", "")
+                .replace("[", "").replace("]", "")
+                .replace("【", "").replace("】", "").trim();
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                "(?iu)^(.+?)(?:[\\s_-]+(?:platform|plat|p|站台)\\s*([0-9]{1,2}[a-z]?)"
+                        + "|[\\s]+([0-9]{1,2})\\s*站台"
+                        + "|[_-]([0-9]{1,2}[a-z]?))$")
+                .matcher(stripped);
+        if (m.matches()) {
+            String base = m.group(1).trim();
+            if (!base.isBlank()) return base;
+        }
+        return stripped;
+    }
+
     private static double calculate(TrackGraph graph, GlobalStation from, GlobalStation to) {
         LocatedStation source = locate(graph, from);
         LocatedStation target = locate(graph, to);
         if (source == null || target == null) return UNREACHABLE;
 
-        double best = directDistance(from, to, source, target);
+        double strict = search(graph, from, to, source, target, true);
+        if (Double.isFinite(strict)) return strict;
+        // Double-ended Create trains reverse out of terminal dead-end stations via the opposite
+        // node of the station arrow. Fall back to an un-restricted exit/entry search so future
+        // segments from a reversal terminus still have an accurate rail-graph distance.
+        return search(graph, from, to, source, target, false);
+    }
+
+    private static double search(TrackGraph graph, GlobalStation from, GlobalStation to,
+            LocatedStation source, LocatedStation target, boolean strictDirection) {
+        double best = directDistance(from, to, source, target, strictDirection);
         Map<TrackNode, Double> distances = new HashMap<>();
         PriorityQueue<NodeDistance> queue = new PriorityQueue<>(
                 Comparator.comparingDouble(NodeDistance::distance));
-        seed(from, source, source.first(), distances, queue);
-        seed(from, source, source.second(), distances, queue);
+        seed(from, source, source.first(), distances, queue, strictDirection);
+        seed(from, source, source.second(), distances, queue, strictDirection);
 
         int visited = 0;
         while (!queue.isEmpty() && visited++ < 100_000) {
             NodeDistance current = queue.poll();
             if (current.distance() != distances.getOrDefault(current.node(), UNREACHABLE)) continue;
             if (current.distance() >= best) continue;
-            if (to.canApproachFrom(current.node())
+            if ((!strictDirection || to.canApproachFrom(current.node()))
                     && isEndpoint(target, current.node())) {
                 best = Math.min(best, current.distance()
                         + distanceFromNode(target, current.node()));
@@ -100,8 +202,9 @@ public final class CreateStationPathEstimator {
     }
 
     private static void seed(GlobalStation station, LocatedStation location, TrackNode node,
-            Map<TrackNode, Double> distances, PriorityQueue<NodeDistance> queue) {
-        if (node == null || !station.canNavigateVia(node)) return;
+            Map<TrackNode, Double> distances, PriorityQueue<NodeDistance> queue,
+            boolean strictDirection) {
+        if (node == null || strictDirection && !station.canNavigateVia(node)) return;
         double distance = distanceFromNode(location, node);
         if (!Double.isFinite(distance)
                 || distance >= distances.getOrDefault(node, UNREACHABLE)) return;
@@ -110,8 +213,11 @@ public final class CreateStationPathEstimator {
     }
 
     private static double directDistance(GlobalStation from, GlobalStation to,
-            LocatedStation source, LocatedStation target) {
+            LocatedStation source, LocatedStation target, boolean strictDirection) {
         if (source.edge() != target.edge()) return UNREACHABLE;
+        if (!strictDirection) {
+            return Math.abs(source.positionFromNode1() - target.positionFromNode1());
+        }
         TrackNode approach = to.canApproachFrom(target.first()) ? target.first()
                 : to.canApproachFrom(target.second()) ? target.second() : null;
         if (approach == null || !from.canNavigateVia(approach)) return UNREACHABLE;

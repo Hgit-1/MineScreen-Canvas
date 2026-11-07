@@ -119,6 +119,8 @@
   "screen.minescreen.traffic.mode_next": "Next departures",
   "screen.minescreen.traffic.mode_map": "Route map",
   "screen.minescreen.traffic.scan_bind": "One-click setup",
+  "screen.minescreen.traffic.scan_radius": "Radius: %s",
+  "screen.minescreen.traffic.scan_radius_changed": "Create station scan radius set to %s blocks",
   "screen.minescreen.traffic.save_apply": "Save & apply",
   "screen.minescreen.traffic.clear_binding": "Clear binding",
   "screen.minescreen.traffic.carriage_data_source": "Onboard data source (no platform binding required)",

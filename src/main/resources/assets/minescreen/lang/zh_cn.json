@@ -119,6 +119,8 @@
   "screen.minescreen.traffic.mode_next": "下一班列车",
   "screen.minescreen.traffic.mode_map": "线路地图",
   "screen.minescreen.traffic.scan_bind": "一键自动配置",
+  "screen.minescreen.traffic.scan_radius": "范围：%s格",
+  "screen.minescreen.traffic.scan_radius_changed": "Create 站台查找范围已设为 %s 格（长站台全段可连接）",
   "screen.minescreen.traffic.save_apply": "保存并应用",
   "screen.minescreen.traffic.clear_binding": "清除绑定",
   "screen.minescreen.traffic.carriage_data_source": "车载数据源（无需绑定地面站台）",

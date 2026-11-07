@@ -1,0 +1,183 @@
+{
+  "id": "melbourne_metro",
+  "name": "Melbourne Metro PID",
+  "layout": "script_scene_v1",
+  "background_color": "#FFF3F5F7",
+  "text_color": "#FF1C242C",
+  "accent_color": "#FF008542",
+  "elements": [
+    {
+      "type": "rect",
+      "x": 0.0,
+      "y": 0.0,
+      "width": 1.0,
+      "height": 0.038,
+      "color": "#FF008542"
+    },
+    {
+      "type": "text",
+      "x": 0.04,
+      "y": 0.07,
+      "size": 1.85,
+      "bold": true,
+      "color": "#FF101B24",
+      "text": "${arrival_time}  ${destination}"
+    },
+    {
+      "type": "rect",
+      "x": 0.74,
+      "y": 0.055,
+      "width": 0.22,
+      "height": 0.095,
+      "color": "#FF252D35"
+    },
+    {
+      "type": "text",
+      "x": 0.85,
+      "y": 0.075,
+      "align": "center",
+      "size": 1.55,
+      "bold": true,
+      "color": "#FFFFFFFF",
+      "text": "${eta}"
+    },
+    {
+      "type": "text",
+      "x": 0.04,
+      "y": 0.175,
+      "size": 0.88,
+      "color": "#FF4A5562",
+      "text": "${status} · Next: ${next}"
+    },
+    {
+      "type": "line",
+      "x": 0.04,
+      "y": 0.225,
+      "x2": 0.96,
+      "y2": 0.225,
+      "size": 1.5,
+      "color": "#FF8F9CA8"
+    },
+    {
+      "type": "rect",
+      "x": 0.05,
+      "y": 0.27,
+      "width": 0.18,
+      "height": 0.065,
+      "color": "#FF008542"
+    },
+    {
+      "type": "text",
+      "x": 0.06,
+      "y": 0.285,
+      "size": 0.82,
+      "bold": true,
+      "color": "#FFFFFFFF",
+      "text": "${next}"
+    },
+    {
+      "type": "line",
+      "x": 0.04,
+      "y": 0.27,
+      "x2": 0.04,
+      "y2": 0.76,
+      "size": 2.0,
+      "color": "#FF008542"
+    },
+    {
+      "type": "line",
+      "x": 0.28,
+      "y": 0.27,
+      "x2": 0.28,
+      "y2": 0.76,
+      "size": 1.5,
+      "color": "#FF8F9CA8"
+    },
+    {
+      "type": "line",
+      "x": 0.52,
+      "y": 0.27,
+      "x2": 0.52,
+      "y2": 0.76,
+      "size": 1.5,
+      "color": "#FF8F9CA8"
+    },
+    {
+      "type": "line",
+      "x": 0.76,
+      "y": 0.27,
+      "x2": 0.76,
+      "y2": 0.76,
+      "size": 1.5,
+      "color": "#FF8F9CA8"
+    },
+    {
+      "type": "text",
+      "x": 0.06,
+      "y": 0.36,
+      "size": 0.78,
+      "color": "#FF222B34",
+      "text": "Stops:"
+    },
+    {
+      "type": "text",
+      "x": 0.06,
+      "y": 0.43,
+      "size": 0.78,
+      "color": "#FF434F5C",
+      "text": "${upcoming_stops}"
+    },
+    {
+      "type": "line",
+      "x": 0.03,
+      "y": 0.79,
+      "x2": 0.97,
+      "y2": 0.79,
+      "size": 1.5,
+      "color": "#FFCAD2DA"
+    },
+    {
+      "type": "rect",
+      "x": 0.03,
+      "y": 0.81,
+      "width": 0.005,
+      "height": 0.16,
+      "color": "#FF008542"
+    },
+    {
+      "type": "text",
+      "x": 0.05,
+      "y": 0.83,
+      "size": 0.85,
+      "bold": true,
+      "color": "#FF1C242C",
+      "text": "Line: ${line}"
+    },
+    {
+      "type": "text",
+      "x": 0.05,
+      "y": 0.90,
+      "size": 0.75,
+      "color": "#FF525E6A",
+      "text": "${direction}  (Cars: ${carriage_count})"
+    },
+    {
+      "type": "rect",
+      "x": 0.72,
+      "y": 0.81,
+      "width": 0.25,
+      "height": 0.15,
+      "color": "#FFE6EAEF"
+    },
+    {
+      "type": "text",
+      "x": 0.845,
+      "y": 0.85,
+      "align": "center",
+      "size": 1.15,
+      "bold": true,
+      "color": "#FF18222C",
+      "text": "${game_time}"
+    }
+  ]
+}

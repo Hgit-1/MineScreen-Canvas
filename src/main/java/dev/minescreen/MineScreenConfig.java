@@ -84,7 +84,7 @@ public final class MineScreenConfig {
             .defineInRange("max_web_tabs_per_session", 6, 1, 16);
     public static final ModConfigSpec.IntValue CREATE_STATION_SCAN_RADIUS = BUILDER.comment(
             "Maximum block radius used to associate a traffic display with the nearest Create station when its imported LCD template has no explicit coordinate binding. Results are cached and never scanned per rendered frame.")
-            .defineInRange("create_station_scan_radius", 16, 2, 32);
+            .defineInRange("create_station_scan_radius", 128, 32, 512);
     public static final ModConfigSpec.IntValue CARRIAGE_ARRIVAL_NOTICE_SECONDS = BUILDER.comment(
             "Seconds before predicted arrival when carriage LCDs switch to the prepare-to-alight notice. Minimum 10 seconds keeps the warning useful for passengers.")
             .defineInRange("carriage_arrival_notice_seconds", 10, 10, 120);

@@ -62,6 +62,8 @@ public final class CreateTrainScheduleBridge implements CreateTrainScheduleCompa
             String destination = endpoints.destination().isBlank()
                     && train.navigation != null && train.navigation.destination != null
                     ? train.navigation.destination.name : endpoints.destination();
+            List<String> upcomingStops = stopsToTerminus(train, station.name, endpoints,
+                    destination, turnaroundStation, railways.trains.values());
             TrainNameFormat name = TrainNameFormat.parse(
                     train.name == null ? "" : train.name.getString());
             String type = name.serviceTypeOrLegacy();
@@ -69,9 +71,11 @@ public final class CreateTrainScheduleBridge implements CreateTrainScheduleCompa
             int carriageCount = train.carriages == null ? 0 : train.carriages.size();
             departures.add(new CreateTrainScheduleService.Departure(train.id, name.displayName(),
                     type, endpoints.origin(), destination, direction, endpoints.loop(),
-                    carriageCount, eta, -1L, !dwelling && stoppedForSignal(train)));
+                    carriageCount, eta, -1L, !dwelling && stoppedForSignal(train),
+                    upcomingStops));
         }
         departures.sort(Comparator.comparingLong(CreateTrainScheduleService.Departure::etaTicks)
+                .thenComparingInt(dep -> countSkippedStops(dep.upcomingStops()) > 0 ? 0 : 1)
                 .thenComparing(CreateTrainScheduleService.Departure::trainName));
         if (departures.size() > maximum) departures = new ArrayList<>(departures.subList(0, maximum));
         return new CreateTrainScheduleService.Snapshot(station.name == null ? "" : station.name,
@@ -98,53 +102,38 @@ public final class CreateTrainScheduleBridge implements CreateTrainScheduleCompa
         }
         try {
             var schedule = train.runtime.getSchedule();
-            List<ScheduledStop> scheduledStops = new ArrayList<>();
-            for (int entryIndex = 0; entryIndex < schedule.entries.size(); entryIndex++) {
-                var entry = schedule.entries.get(entryIndex);
-                if (entry != null && entry.instruction instanceof DestinationInstruction target) {
-                    addScheduledStop(scheduledStops, entryIndex, target.getFilter());
-                }
-            }
+            List<ScheduledStop> scheduledStops = collectScheduledStops(schedule);
             if (scheduledStops.isEmpty()) return RouteEndpoints.EMPTY;
+            int cycleLen = effectiveCycleLength(scheduledStops, schedule.cyclic);
             int activeIndex = activeStopIndex(train, scheduledStops, stationName,
-                    schedule.entries.size(), schedule.cyclic);
+                    schedule.entries.size(), schedule.cyclic) % cycleLen;
+            int boardIndex = resolveBoardStopIndex(scheduledStops, cycleLen, schedule.cyclic,
+                    activeIndex, stationName);
+            int effectiveIndex = (boardIndex >= 0 ? boardIndex : activeIndex) % cycleLen;
             if (TrainNameFormat.parse(train.name == null ? "" : train.name.getString()).loop()) {
-                return loopEndpoints(scheduledStops, activeIndex, stationName);
+                return loopEndpoints(scheduledStops, effectiveIndex, stationName);
             }
-            int explicitTurnaround = namedStopIndex(scheduledStops, turnaroundStation);
-            if (explicitTurnaround > 0 && explicitTurnaround < scheduledStops.size() - 1
-                    || explicitTurnaround > 0 && schedule.cyclic) {
-                String returnTerminus = schedule.cyclic
-                        && !sameStation(scheduledStops.getFirst().name(),
-                                scheduledStops.getLast().name())
-                        ? scheduledStops.getFirst().name() : scheduledStops.getLast().name();
-                boolean returnWorking = activeIndex > explicitTurnaround
-                        || activeIndex == explicitTurnaround && train.currentStation != null;
-                return returnWorking
-                        ? new RouteEndpoints(scheduledStops.get(explicitTurnaround).name(),
-                                returnTerminus, false)
-                        : new RouteEndpoints(scheduledStops.getFirst().name(),
-                                scheduledStops.get(explicitTurnaround).name(), false);
-            }
-            String direction = activeIndex < 0 ? ""
-                    : directionMarker(scheduledStops.get(activeIndex).name());
-            if (activeIndex >= 0 && direction.isBlank()) {
-                int directionalIndex = directionalNeighbour(scheduledStops, activeIndex,
+
+            String direction = effectiveIndex < 0 ? ""
+                    : directionMarker(scheduledStops.get(effectiveIndex).name());
+            if (effectiveIndex >= 0 && direction.isBlank()) {
+                int directionalIndex = directionalNeighbour(scheduledStops, effectiveIndex,
                         train.currentStation != null, schedule.cyclic);
                 if (directionalIndex >= 0) {
-                    activeIndex = directionalIndex;
-                    direction = directionMarker(scheduledStops.get(activeIndex).name());
+                    int dirCheckIdx = directionalIndex % cycleLen;
+                    direction = directionMarker(scheduledStops.get(dirCheckIdx).name());
+                    if (!direction.isBlank()) effectiveIndex = dirCheckIdx;
                 }
             }
-            if (activeIndex >= 0 && !direction.isBlank()) {
-                int start = activeIndex;
-                int end = activeIndex;
+            if (effectiveIndex >= 0 && !direction.isBlank()) {
+                int start = effectiveIndex;
+                int end = effectiveIndex;
                 int examined = 0;
-                while (examined++ < scheduledStops.size() - 1) {
+                while (examined++ < cycleLen - 1) {
                     int previous = start - 1;
                     if (previous < 0) {
                         if (!schedule.cyclic) break;
-                        previous = scheduledStops.size() - 1;
+                        previous = cycleLen - 1;
                     }
                     String marker = directionMarker(scheduledStops.get(previous).name());
                     if (marker.equals(direction)) start = previous;
@@ -154,9 +143,9 @@ public final class CreateTrainScheduleBridge implements CreateTrainScheduleCompa
                     }
                 }
                 examined = 0;
-                while (examined++ < scheduledStops.size() - 1) {
+                while (examined++ < cycleLen - 1) {
                     int next = end + 1;
-                    if (next >= scheduledStops.size()) {
+                    if (next >= cycleLen) {
                         if (!schedule.cyclic) break;
                         next = 0;
                     }
@@ -171,38 +160,171 @@ public final class CreateTrainScheduleBridge implements CreateTrainScheduleCompa
                         scheduledStops.get(end).name(), false);
             }
 
-            int turnaround = palindromeTurnaround(scheduledStops, schedule.cyclic);
-            if (turnaround < 0 && closedWorking(scheduledStops, schedule.cyclic)) {
-                turnaround = defaultTurnaround(scheduledStops, schedule.cyclic);
-            }
-            if (turnaround > 0 && activeIndex >= 0) {
-                boolean returnWorking = activeIndex > turnaround
-                        || activeIndex == turnaround && train.currentStation != null;
-                String returnTerminus = schedule.cyclic
-                        && !sameStation(scheduledStops.getFirst().name(),
-                                scheduledStops.getLast().name())
-                        ? scheduledStops.getFirst().name() : scheduledStops.getLast().name();
-                return returnWorking
-                        ? new RouteEndpoints(scheduledStops.get(turnaround).name(),
-                                returnTerminus, false)
-                        : new RouteEndpoints(scheduledStops.getFirst().name(),
-                                scheduledStops.get(turnaround).name(), false);
-            }
-            if (schedule.cyclic && scheduledStops.size() > 1) {
-                if (activeIndex >= 0) {
-                    return new RouteEndpoints(
-                            scheduledStops.get(Math.floorMod(activeIndex - 1,
-                                    scheduledStops.size())).name(),
-                            scheduledStops.get((activeIndex + 1)
-                                    % scheduledStops.size()).name(), false);
+            boolean[] apices = findTurnaroundApices(scheduledStops, cycleLen, schedule.cyclic,
+                    turnaroundStation);
+            int originIdx = effectiveIndex;
+            if (!apices[effectiveIndex]) {
+                for (int step = 1; step < cycleLen; step++) {
+                    int cand = schedule.cyclic
+                            ? Math.floorMod(effectiveIndex - step, cycleLen)
+                            : effectiveIndex - step;
+                    if (cand < 0) break;
+                    if (apices[cand]) {
+                        originIdx = cand;
+                        break;
+                    }
                 }
-                return RouteEndpoints.EMPTY;
             }
-            return new RouteEndpoints(scheduledStops.getFirst().name(),
-                    scheduledStops.getLast().name(), false);
+            int destIdx = effectiveIndex;
+            for (int step = 1; step <= cycleLen; step++) {
+                int cand = schedule.cyclic
+                        ? (effectiveIndex + step) % cycleLen
+                        : effectiveIndex + step;
+                if (cand >= cycleLen) break;
+                if (apices[cand]) {
+                    destIdx = cand;
+                    break;
+                }
+            }
+            return new RouteEndpoints(scheduledStops.get(originIdx).name(),
+                    scheduledStops.get(destIdx).name(), false);
         } catch (RuntimeException ignored) {
             return RouteEndpoints.EMPTY;
         }
+    }
+
+    private static List<ScheduledStop> collectScheduledStops(
+            com.simibubi.create.content.trains.schedule.Schedule schedule) {
+        List<ScheduledStop> scheduledStops = new ArrayList<>();
+        for (int entryIndex = 0; entryIndex < schedule.entries.size(); entryIndex++) {
+            var entry = schedule.entries.get(entryIndex);
+            if (entry != null && entry.instruction instanceof DestinationInstruction target) {
+                addScheduledStop(scheduledStops, entryIndex, target.getFilter());
+            }
+        }
+        return scheduledStops;
+    }
+
+    private static int effectiveCycleLength(List<ScheduledStop> stops, boolean cyclic) {
+        if (cyclic && stops.size() > 2
+                && sameStation(stops.getFirst().name(), stops.getLast().name())) {
+            return stops.size() - 1;
+        }
+        return stops.size();
+    }
+
+    private static int resolveBoardStopIndex(List<ScheduledStop> stops, int cycleLen,
+            boolean cyclic, int activeIndex, String stationName) {
+        if (stationName == null || stationName.isBlank() || cycleLen <= 0) return -1;
+        int startSearch = Math.max(0, activeIndex % cycleLen);
+        for (int offset = 0; offset < cycleLen; offset++) {
+            int candidate = startSearch + offset;
+            if (candidate >= cycleLen) {
+                if (!cyclic) break;
+                candidate %= cycleLen;
+            }
+            if (destinationMatches(stops.get(candidate).name(), stationName)
+                    || sameStation(stops.get(candidate).name(), stationName)) {
+                return candidate;
+            }
+        }
+        int named = namedStopIndex(stops, stationName);
+        return named >= 0 ? named % cycleLen : -1;
+    }
+
+    private static boolean[] findTurnaroundApices(List<ScheduledStop> stops, int cycleLen,
+            boolean cyclic, String turnaroundStation) {
+        boolean[] apices = new boolean[Math.max(1, cycleLen)];
+        if (cycleLen <= 2) {
+            for (int i = 0; i < cycleLen; i++) apices[i] = true;
+            return apices;
+        }
+        if (!cyclic) {
+            apices[0] = true;
+            apices[cycleLen - 1] = true;
+            int explicit = namedStopIndex(stops, turnaroundStation);
+            if (explicit > 0 && explicit < cycleLen - 1) {
+                apices[explicit] = true;
+            } else if (sameBaseStation(stops.getFirst().name(), stops.get(cycleLen - 1).name())) {
+                int bestPivot = -1;
+                int bestScore = 0;
+                for (int pivot = 1; pivot < cycleLen - 1; pivot++) {
+                    int maxD = Math.min(pivot, cycleLen - 1 - pivot);
+                    int score = 0;
+                    for (int d = 1; d <= maxD; d++) {
+                        if (sameBaseStation(stops.get(pivot - d).name(),
+                                stops.get(pivot + d).name())) {
+                            score++;
+                        } else {
+                            break;
+                        }
+                    }
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestPivot = pivot;
+                    }
+                }
+                if (bestPivot > 0) apices[bestPivot] = true;
+            }
+            return apices;
+        }
+
+        int explicit = namedStopIndex(stops, turnaroundStation);
+        if (explicit >= 0 && explicit < cycleLen) {
+            apices[explicit] = true;
+        }
+        int maxDist = (cycleLen - 1) / 2;
+        int apexCount = 0;
+        int singleApex = -1;
+        for (int i = 0; i < cycleLen; i++) {
+            int score = 0;
+            for (int d = 1; d <= maxDist; d++) {
+                int prev = Math.floorMod(i - d, cycleLen);
+                int next = (i + d) % cycleLen;
+                if (sameBaseStation(stops.get(prev).name(), stops.get(next).name())) {
+                    score++;
+                } else {
+                    break;
+                }
+            }
+            if (score > 0) {
+                apices[i] = true;
+            }
+        }
+        for (int i = 0; i < cycleLen; i++) {
+            if (apices[i]) {
+                apexCount++;
+                singleApex = i;
+            }
+        }
+        if (apexCount == 1 && singleApex >= 0) {
+            apices[(singleApex + cycleLen / 2) % cycleLen] = true;
+        } else if (apexCount == 0) {
+            boolean foundPair = false;
+            for (int a = 0; a < cycleLen && !foundPair; a++) {
+                for (int b = a + 1; b < cycleLen; b++) {
+                    if (sameBaseStation(stops.get(a).name(), stops.get(b).name())) {
+                        int span1 = b - a;
+                        int span2 = cycleLen - span1;
+                        apices[(a + span1 / 2) % cycleLen] = true;
+                        apices[(b + span2 / 2) % cycleLen] = true;
+                        foundPair = true;
+                        break;
+                    }
+                }
+            }
+            if (!foundPair) {
+                apices[0] = true;
+                apices[cycleLen / 2] = true;
+            }
+        }
+        return apices;
+    }
+
+    private static boolean sameBaseStation(String first, String second) {
+        String base1 = CreateTrainScheduleService.extractBaseStationName(stripDirection(first));
+        String base2 = CreateTrainScheduleService.extractBaseStationName(stripDirection(second));
+        return base1.equalsIgnoreCase(base2);
     }
 
     private static void addScheduledStop(List<ScheduledStop> stops, int entryIndex,
@@ -345,6 +467,236 @@ public final class CreateTrainScheduleBridge implements CreateTrainScheduleCompa
                 .replace("【", "").replace("】", "").trim();
     }
 
+    private static List<String> stopsToTerminus(Train train, String boardStation,
+            RouteEndpoints endpoints, String destination, String turnaroundStation,
+            java.util.Collection<Train> allTrains) {
+        if (train.runtime == null || train.runtime.getSchedule() == null) {
+            return destination == null || destination.isBlank() ? List.of() : List.of(destination);
+        }
+        try {
+            var schedule = train.runtime.getSchedule();
+            List<ScheduledStop> scheduledStops = collectScheduledStops(schedule);
+            if (scheduledStops.isEmpty()) {
+                return destination == null || destination.isBlank()
+                        ? List.of() : List.of(destination);
+            }
+            int cycleLen = effectiveCycleLength(scheduledStops, schedule.cyclic);
+            int activeIndex = activeStopIndex(train, scheduledStops, boardStation,
+                    schedule.entries.size(), schedule.cyclic) % cycleLen;
+            int boardIndex = resolveBoardStopIndex(scheduledStops, cycleLen, schedule.cyclic,
+                    activeIndex, boardStation);
+            if (boardIndex < 0) boardIndex = activeIndex;
+
+            int startIndex = boardIndex % cycleLen;
+            String targetStation = destination == null ? "" : destination.trim();
+            if (!endpoints.loop() && !targetStation.isBlank()
+                    && sameStation(scheduledStops.get(startIndex).name(), targetStation)) {
+                if (schedule.cyclic && cycleLen > 1) {
+                    boolean[] apices = findTurnaroundApices(scheduledStops, cycleLen,
+                            schedule.cyclic, turnaroundStation);
+                    for (int step = 1; step <= cycleLen; step++) {
+                        int cand = (startIndex + step) % cycleLen;
+                        if (apices[cand]) {
+                            targetStation = scheduledStops.get(cand).name();
+                            break;
+                        }
+                    }
+                } else {
+                    int originIndex = namedStopIndex(scheduledStops, endpoints.origin());
+                    if (originIndex >= 0 && originIndex < startIndex) {
+                        startIndex = originIndex;
+                    } else {
+                        startIndex = 0;
+                    }
+                }
+            }
+
+            List<String> stops = new ArrayList<>();
+            addExactStop(stops, scheduledStops.get(startIndex).name());
+            for (int step = 1; step <= cycleLen; step++) {
+                int idx = startIndex + step;
+                if (idx >= cycleLen) {
+                    if (!schedule.cyclic) break;
+                    idx %= cycleLen;
+                }
+                String stopName = scheduledStops.get(idx).name();
+                if (endpoints.loop() && sameStation(stopName, boardStation)) {
+                    break;
+                }
+                addExactStop(stops, stopName);
+                if (!endpoints.loop() && !targetStation.isBlank()
+                        && (sameStation(stopName, targetStation)
+                                || destinationMatches(stopName, targetStation))) {
+                    break;
+                }
+                if (stops.size() >= 32) break;
+            }
+            return expandIntermediateSkippedStops(train, stops, allTrains);
+        } catch (RuntimeException ignored) {
+            return destination == null || destination.isBlank() ? List.of() : List.of(destination);
+        }
+    }
+
+    private static List<String> expandIntermediateSkippedStops(Train train,
+            List<String> stoppingStops, java.util.Collection<Train> allTrains) {
+        if (stoppingStops == null || stoppingStops.size() < 2) {
+            return stoppingStops == null ? List.of() : stoppingStops;
+        }
+        java.util.Set<String> scheduledNetworkBases = collectScheduledBaseStations(allTrains);
+        List<String> expanded = new ArrayList<>();
+        GlobalStation prevStation = train != null && train.graph != null
+                ? CreateStationPathEstimator.resolveNext(train.graph, stoppingStops.getFirst(), null)
+                : null;
+        expanded.add(stoppingStops.getFirst());
+
+        for (int i = 0; i < stoppingStops.size() - 1 && expanded.size() < 32; i++) {
+            String fromStop = stoppingStops.get(i);
+            String toStop = stoppingStops.get(i + 1);
+            GlobalStation nextStation = train != null && train.graph != null
+                    ? CreateStationPathEstimator.resolveNext(train.graph, toStop, prevStation)
+                    : null;
+
+            List<String> skipped = new ArrayList<>();
+            if (allTrains != null) {
+                skipped.addAll(findSkippedStopsFromPeerTrains(fromStop, toStop, allTrains));
+            }
+            if (skipped.isEmpty() && train != null && train.graph != null
+                    && prevStation != null && nextStation != null) {
+                for (String graphStop : CreateStationPathEstimator.intermediateStations(
+                        train.graph, prevStation, nextStation)) {
+                    if (isScheduledPassengerStation(graphStop, scheduledNetworkBases)) {
+                        skipped.add(graphStop);
+                    }
+                }
+            }
+            for (String skipName : skipped) {
+                if (expanded.size() >= 31) break;
+                if (isTemporaryAssemblyStationName(skipName)) continue;
+                boolean alreadyStopping = false;
+                for (String stop : stoppingStops) {
+                    if (sameBaseStation(stop, skipName)) {
+                        alreadyStopping = true;
+                        break;
+                    }
+                }
+                if (!alreadyStopping) {
+                    addSkippedStop(expanded, skipName);
+                }
+            }
+            addExactStop(expanded, toStop);
+            if (nextStation != null) prevStation = nextStation;
+        }
+        return expanded;
+    }
+
+    private static java.util.Set<String> collectScheduledBaseStations(
+            java.util.Collection<Train> allTrains) {
+        java.util.Set<String> bases = new java.util.HashSet<>();
+        if (allTrains == null) return bases;
+        for (Train peer : allTrains) {
+            if (peer == null || peer.invalid || peer.runtime == null
+                    || peer.runtime.getSchedule() == null) {
+                continue;
+            }
+            try {
+                for (ScheduledStop stop : collectScheduledStops(peer.runtime.getSchedule())) {
+                    if (isTemporaryAssemblyStationName(stop.name())) continue;
+                    String base = CreateTrainScheduleService
+                            .extractBaseStationName(stripDirection(stop.name()))
+                            .toLowerCase(Locale.ROOT);
+                    if (!base.isBlank()) bases.add(base);
+                }
+            } catch (RuntimeException ignored) {
+            }
+        }
+        return bases;
+    }
+
+    private static boolean isScheduledPassengerStation(String stationName,
+            java.util.Set<String> scheduledNetworkBases) {
+        if (isTemporaryAssemblyStationName(stationName)) return false;
+        String base = CreateTrainScheduleService
+                .extractBaseStationName(stripDirection(stationName))
+                .toLowerCase(Locale.ROOT);
+        if (base.isBlank()) return false;
+        return scheduledNetworkBases.contains(base);
+    }
+
+    private static boolean isTemporaryAssemblyStationName(String stationName) {
+        String clean = stripDirection(stationName).trim().toLowerCase(Locale.ROOT);
+        if (clean.isBlank()) return true;
+        return clean.equals("track station")
+                || clean.startsWith("track station ")
+                || clean.equals("列车站")
+                || clean.equals("火车站")
+                || clean.startsWith("temp")
+                || clean.contains("temporary")
+                || clean.contains("depot")
+                || clean.contains("yard")
+                || clean.contains("siding")
+                || clean.contains("assemble")
+                || clean.contains("车库")
+                || clean.contains("车辆段")
+                || clean.contains("编组");
+    }
+
+    private static List<String> findSkippedStopsFromPeerTrains(String fromStop, String toStop,
+            java.util.Collection<Train> allTrains) {
+        List<String> bestSubsequence = List.of();
+        for (Train peer : allTrains) {
+            if (peer == null || peer.invalid || peer.runtime == null
+                    || peer.runtime.getSchedule() == null) {
+                continue;
+            }
+            try {
+                var schedule = peer.runtime.getSchedule();
+                List<ScheduledStop> peerStops = collectScheduledStops(schedule);
+                int cycleLen = effectiveCycleLength(peerStops, schedule.cyclic);
+                if (cycleLen < 3) continue;
+                for (int start = 0; start < cycleLen; start++) {
+                    if (!sameBaseStation(peerStops.get(start).name(), fromStop)) continue;
+                    List<String> between = new ArrayList<>();
+                    for (int step = 1; step < cycleLen && step <= 16; step++) {
+                        int idx = schedule.cyclic ? (start + step) % cycleLen : start + step;
+                        if (idx >= cycleLen) break;
+                        String candidate = peerStops.get(idx).name();
+                        if (sameBaseStation(candidate, fromStop)) break;
+                        if (sameBaseStation(candidate, toStop)) {
+                            if (between.size() > bestSubsequence.size()) {
+                                bestSubsequence = List.copyOf(between);
+                            }
+                            break;
+                        }
+                        between.add(candidate);
+                    }
+                }
+            } catch (RuntimeException ignored) {
+            }
+        }
+        return bestSubsequence;
+    }
+
+    private static void addSkippedStop(List<String> stops, String station) {
+        String value = station == null ? "" : station.trim();
+        if (value.startsWith("~")) value = value.substring(1).trim();
+        if (value.isBlank() || value.indexOf('*') >= 0 || value.indexOf('?') >= 0) return;
+        for (String existing : stops) {
+            String cleanExisting = existing.startsWith("~")
+                    ? existing.substring(1).trim() : existing;
+            if (sameBaseStation(cleanExisting, value)) return;
+        }
+        stops.add("~" + value);
+    }
+
+    private static int countSkippedStops(List<String> stops) {
+        if (stops == null || stops.isEmpty()) return 0;
+        int count = 0;
+        for (String s : stops) {
+            if (s != null && s.startsWith("~")) count++;
+        }
+        return count;
+    }
+
     private static void addExactStop(List<String> stops, String station) {
         String value = station == null ? "" : station.trim();
         if (value.isBlank() || value.indexOf('*') >= 0 || value.indexOf('?') >= 0) return;
@@ -440,11 +792,13 @@ public final class CreateTrainScheduleBridge implements CreateTrainScheduleCompa
                     nextIndex = 0;
                 }
                 GlobalStation nextStop = scheduledStop(train, nextIndex, stopAtEntry, false);
-                long segmentTicks = futureSegmentTicks(train, nextIndex, stopAtEntry, nextStop);
+                long segmentTicks = futureSegmentTicks(train, nextIndex, stopAtEntry, nextStop,
+                        fallbackSegment);
                 if (segmentTicks >= CreateTrainScheduleService.UNKNOWN_ETA_TICKS) {
                     return CreateTrainScheduleService.UNKNOWN_ETA_TICKS;
                 }
-                elapsed = saturatingAdd(elapsed, segmentTicks);
+                long stopApproachPenalty = dwell > 0L ? 40L : 25L;
+                elapsed = saturatingAdd(elapsed, saturatingAdd(segmentTicks, stopApproachPenalty));
                 stopAtEntry = nextStop;
             }
         } catch (RuntimeException ignored) {
@@ -453,9 +807,24 @@ public final class CreateTrainScheduleBridge implements CreateTrainScheduleCompa
     }
 
     private static long remainingCurrentLegTicks(Train train, int entryIndex, long fallback) {
-        if (train.getCurrentStation() != null) return 0L;
+        GlobalStation present = train.getCurrentStation();
+        if (present != null) {
+            if (train.runtime != null && train.runtime.getSchedule() != null
+                    && entryIndex >= 0 && entryIndex < train.runtime.getSchedule().entries.size()) {
+                var entry = train.runtime.getSchedule().entries.get(entryIndex);
+                if (entry != null && entry.instruction instanceof DestinationInstruction target) {
+                    if (destinationMatches(target.getFilter(), present.name)) {
+                        return 0L;
+                    }
+                    GlobalStation nextStop = CreateStationPathEstimator.resolveNext(
+                            train.graph, target.getFilter(), present);
+                    return futureSegmentTicks(train, entryIndex, present, nextStop, fallback);
+                }
+            }
+            return 0L;
+        }
         long recorded = recordedSegmentTicks(train, entryIndex);
-        if (train.navigation != null) {
+        if (train.navigation != null && train.navigation.destination != null) {
             long planned = etaFromDistance(train,
                     Math.max(0.0D, train.navigation.distanceToDestination));
             long hybrid = hybridCurrentLegTicks(train, recorded, planned);
@@ -463,7 +832,8 @@ public final class CreateTrainScheduleBridge implements CreateTrainScheduleCompa
                     && hybrid < CreateTrainScheduleService.UNKNOWN_ETA_TICKS) return hybrid;
         }
         long learned = recorded > 0L ? recorded : learnedSegmentTicks(train, entryIndex, fallback);
-        if (train.navigation != null && train.navigation.distanceStartedAt > 0.001D) {
+        if (train.navigation != null && train.navigation.destination != null
+                && train.navigation.distanceStartedAt > 0.001D) {
             double fraction = Math.max(0.0D, Math.min(1.0D,
                     train.navigation.distanceToDestination
                             / train.navigation.distanceStartedAt));
@@ -540,24 +910,40 @@ public final class CreateTrainScheduleBridge implements CreateTrainScheduleCompa
     }
 
     private static long futureSegmentTicks(Train train, int destinationEntry,
-            GlobalStation from, GlobalStation to) {
+            GlobalStation from, GlobalStation to, long fallback) {
         long learned = recordedSegmentTicks(train, destinationEntry);
         if (learned > 0L) return learned;
         double distance = CreateStationPathEstimator.distance(train.graph, from, to);
-        if (!Double.isFinite(distance)) return CreateTrainScheduleService.UNKNOWN_ETA_TICKS;
+        if (!Double.isFinite(distance)) return Math.max(1L, fallback);
         double maximum = Math.max(0.001D, train.maxSpeed());
         double turn = Math.max(0.001D, train.maxTurnSpeed());
         double scheduledCruise = Math.min(maximum, (maximum + turn) * 0.5D);
-        return TrainEtaEstimator.estimateTicks(distance, 0.0D, scheduledCruise,
+        long estimated = TrainEtaEstimator.estimateTicks(distance, 0.0D, scheduledCruise,
                 train.acceleration(), 24_000L,
                 CreateTrainScheduleService.UNKNOWN_ETA_TICKS);
+        return estimated < CreateTrainScheduleService.UNKNOWN_ETA_TICKS
+                ? estimated : Math.max(1L, fallback);
     }
 
     private static GlobalStation scheduledStop(Train train, int entryIndex,
             GlobalStation previous, boolean currentEntry) {
         if (currentEntry) {
             GlobalStation present = train.getCurrentStation();
-            if (present != null) return present;
+            if (present != null) {
+                if (train.runtime != null && train.runtime.getSchedule() != null
+                        && entryIndex >= 0
+                        && entryIndex < train.runtime.getSchedule().entries.size()) {
+                    var entry = train.runtime.getSchedule().entries.get(entryIndex);
+                    if (entry != null
+                            && entry.instruction instanceof DestinationInstruction target
+                            && !destinationMatches(target.getFilter(), present.name)) {
+                        GlobalStation resolved = CreateStationPathEstimator.resolveNext(
+                                train.graph, target.getFilter(), present);
+                        if (resolved != null) return resolved;
+                    }
+                }
+                return present;
+            }
             if (train.navigation != null && train.navigation.destination != null) {
                 return train.navigation.destination;
             }

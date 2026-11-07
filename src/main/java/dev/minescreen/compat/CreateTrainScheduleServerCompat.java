@@ -110,9 +110,18 @@ public final class CreateTrainScheduleServerCompat {
 
     public record Departure(UUID trainId, String trainName, String trainType, String origin,
             String destination, String direction, boolean loop, int carriageCount,
-            long etaTicks, long dwellTicks, boolean waitingForSignal) {
+            long etaTicks, long dwellTicks, boolean waitingForSignal,
+            List<String> upcomingStops) {
+        public Departure(UUID trainId, String trainName, String trainType, String origin,
+                String destination, String direction, boolean loop, int carriageCount,
+                long etaTicks, long dwellTicks, boolean waitingForSignal) {
+            this(trainId, trainName, trainType, origin, destination, direction, loop,
+                    carriageCount, etaTicks, dwellTicks, waitingForSignal, List.of());
+        }
+
         public Departure {
             trainId = trainId == null ? new UUID(0L, 0L) : trainId;
+            upcomingStops = upcomingStops == null ? List.of() : List.copyOf(upcomingStops);
         }
     }
 

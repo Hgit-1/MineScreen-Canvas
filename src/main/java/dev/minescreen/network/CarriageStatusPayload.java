@@ -17,7 +17,7 @@ public record CarriageStatusPayload(UUID trainId, String turnaroundStation, Stri
         List<String> upcomingStops, long etaTicks, double distance, Phase phase,
         long dwellTicks, boolean schedulePresent, long serverGameTime)
         implements CustomPacketPayload {
-    private static final int MAX_UPCOMING_STOPS = 8;
+    private static final int MAX_UPCOMING_STOPS = 32;
     public static final Type<CarriageStatusPayload> TYPE = new Type<>(
             ResourceLocation.fromNamespaceAndPath(MineScreen.MOD_ID, "carriage_status"));
     public static final StreamCodec<RegistryFriendlyByteBuf, CarriageStatusPayload> STREAM_CODEC =
