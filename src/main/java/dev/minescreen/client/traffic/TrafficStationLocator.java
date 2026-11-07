@@ -34,6 +34,8 @@ public final class TrafficStationLocator {
             new WeakHashMap<>();
     private static final Map<Level, Map<NearbyKey, CachedMatch>> NEARBY_CACHE =
             new WeakHashMap<>();
+    private static final Map<Level, Map<NearbyKey, CachedList>> NEARBY_LIST_CACHE =
+            new WeakHashMap<>();
 
     private TrafficStationLocator() {
     }
@@ -42,6 +44,7 @@ public final class TrafficStationLocator {
     public static void clearCache() {
         CACHE.clear();
         NEARBY_CACHE.clear();
+        NEARBY_LIST_CACHE.clear();
     }
 
     /** Lets the editor distinguish a missing Create installation from an empty scan result. */
@@ -89,6 +92,24 @@ public final class TrafficStationLocator {
         if (wanted.isBlank()) return null;
         StationMatch match = resolveNearby(level, displayPos, name, radius);
         return match != null && wanted.equals(normalize(match.createStationName())) ? match : null;
+    }
+
+    /** Cached multi-station lookup for main hall / concourse summary displays. */
+    public static List<StationMatch> cachedNearbyStations(Level level, BlockPos displayPos,
+            int radius) {
+        if (level == null || displayPos == null || !ModList.get().isLoaded("create")) {
+            return List.of();
+        }
+        int safeRadius = Math.max(2, Math.min(MAX_SCAN_RADIUS, radius));
+        NearbyKey key = new NearbyKey(displayPos.immutable(), "", safeRadius);
+        long now = level.getGameTime();
+        Map<NearbyKey, CachedList> cache = NEARBY_LIST_CACHE.computeIfAbsent(level,
+                ignored -> new HashMap<>());
+        CachedList cached = cache.get(key);
+        if (cached != null && now - cached.checkedAt() < CACHE_TICKS) return cached.matches();
+        List<StationMatch> matches = nearbyStations(level, displayPos, safeRadius);
+        cache.put(key, new CachedList(now, matches));
+        return matches;
     }
 
     /** Bounded editor-only suggestions; never called from the renderer. */
@@ -236,6 +257,9 @@ public final class TrafficStationLocator {
     }
 
     private record CachedMatch(long checkedAt, StationMatch match) {
+    }
+
+    private record CachedList(long checkedAt, List<StationMatch> matches) {
     }
 
     private record NearbyKey(BlockPos position, String preferredName, int radius) {

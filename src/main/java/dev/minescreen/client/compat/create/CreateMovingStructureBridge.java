@@ -170,6 +170,162 @@ public final class CreateMovingStructureBridge implements MovingStructureCompat.
         return ClientCarriageTrainState.getOrRequest(train.id, turnaroundStation, fallback);
     }
 
+    private static final java.lang.reflect.Field SLIDING_DOOR_ANIMATION =
+            findSlidingDoorAnimationField();
+
+    private static java.lang.reflect.Field findSlidingDoorAnimationField() {
+        try {
+            java.lang.reflect.Field field = com.simibubi.create.content.decoration.slidingDoor
+                    .SlidingDoorBlockEntity.class.getDeclaredField("animation");
+            field.setAccessible(true);
+            return field;
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private static boolean isSlidingDoorOpen(Object blockEntity) {
+        if (SLIDING_DOOR_ANIMATION == null
+                || !(blockEntity instanceof com.simibubi.create.content.decoration.slidingDoor
+                        .SlidingDoorBlockEntity)) {
+            return false;
+        }
+        try {
+            Object anim = SLIDING_DOOR_ANIMATION.get(blockEntity);
+            if (anim instanceof net.createmod.catnip.animation.LerpedFloat lerped) {
+                return lerped.getValue() > 0.05F || lerped.getChaseTarget() > 0.5F;
+            }
+        } catch (IllegalAccessException | RuntimeException ignored) {
+        }
+        return false;
+    }
+
+    @Override
+    public int carriageDoorSide(Level virtualLevel, Vec3 screenRight, String targetStationName) {
+        if (virtualLevel == null || screenRight == null) return 0;
+        AbstractContraptionEntity entity = entityFor(virtualLevel);
+        if (!(entity instanceof CarriageContraptionEntity carriageEntity)
+                || carriageEntity.getContraption() == null) {
+            return 0;
+        }
+        double rx = screenRight.x;
+        double rz = screenRight.z;
+        double rLen = Math.hypot(rx, rz);
+        if (rLen < 1.0E-4D) return 0;
+        rx /= rLen;
+        rz /= rLen;
+
+        Contraption contraption = carriageEntity.getContraption();
+        Vec3 center = contraption.bounds == null ? Vec3.ZERO : contraption.bounds.getCenter();
+
+        // 1. Check currently open doors on the carriage (e.g. while stopped at a station)
+        double openDoorSum = 0.0D;
+        int openDoorCount = 0;
+        double allDoorSum = 0.0D;
+        int allDoorCount = 0;
+        for (var entry : contraption.getBlocks().entrySet()) {
+            var info = entry.getValue();
+            if (info == null) continue;
+            BlockState state = info.state();
+            if (!(state.getBlock() instanceof net.minecraft.world.level.block.DoorBlock)) continue;
+            BlockPos pos = entry.getKey();
+            double dx = (pos.getX() + 0.5D) - center.x;
+            double dz = (pos.getZ() + 0.5D) - center.z;
+            double dot = dx * rx + dz * rz;
+            allDoorSum += dot;
+            allDoorCount++;
+            boolean isOpen = state.getOptionalValue(
+                    net.minecraft.world.level.block.DoorBlock.OPEN).orElse(false);
+            if (!isOpen && (isSlidingDoorOpen(contraption.getBlockEntityClientSide(pos))
+                    || isSlidingDoorOpen(virtualLevel.getBlockEntity(pos)))) {
+                isOpen = true;
+            }
+            if (!isOpen) {
+                BlockState renderState = virtualLevel.getBlockState(pos);
+                if (renderState.getOptionalValue(
+                        net.minecraft.world.level.block.DoorBlock.OPEN).orElse(false)) {
+                    isOpen = true;
+                }
+            }
+            if (isOpen) {
+                openDoorSum += dot;
+                openDoorCount++;
+            }
+        }
+        if (openDoorCount > 0 && Math.abs(openDoorSum / openDoorCount) > 0.12D) {
+            return openDoorSum < 0.0D ? -1 : 1;
+        }
+
+        // 2. Check the current or approaching Create station's DoorControl or platform side
+        Level realLevel = carriageEntity.level();
+        BlockPos stationPos = null;
+        if (carriageEntity.getCarriage() != null && carriageEntity.getCarriage().train != null) {
+            Train train = carriageEntity.getCarriage().train;
+            GlobalStation station = train.getCurrentStation();
+            if (station == null && train.navigation != null) {
+                station = train.navigation.destination;
+            }
+            if (station != null) {
+                stationPos = station.getBlockEntityPos();
+            }
+        }
+        if (stationPos == null && realLevel != null
+                && targetStationName != null && !targetStationName.isBlank()) {
+            var match = dev.minescreen.client.traffic.TrafficStationLocator.resolveNamedNearby(
+                    realLevel, carriageEntity.blockPosition(), targetStationName,
+                    dev.minescreen.client.traffic.TrafficStationLocator.MAX_SCAN_RADIUS);
+            if (match != null) {
+                stationPos = match.position();
+            }
+        }
+        if (stationPos != null) {
+            if (realLevel != null && realLevel.isLoaded(stationPos)) {
+                try {
+                    var behaviour = com.simibubi.create.foundation.blockEntity.behaviour
+                            .BlockEntityBehaviour.get(realLevel, stationPos,
+                                    com.simibubi.create.content.decoration.slidingDoor
+                                            .DoorControlBehaviour.TYPE);
+                    if (behaviour != null && behaviour.mode != null) {
+                        Direction worldDoorDir = switch (behaviour.mode) {
+                            case NORTH -> Direction.NORTH;
+                            case SOUTH -> Direction.SOUTH;
+                            case EAST -> Direction.EAST;
+                            case WEST -> Direction.WEST;
+                            default -> null;
+                        };
+                        if (worldDoorDir != null) {
+                            Vec3 localOrigin = carriageEntity.toLocalVector(
+                                    carriageEntity.position(), 1.0F);
+                            Vec3 localTip = carriageEntity.toLocalVector(
+                                    carriageEntity.position().add(
+                                            Vec3.atLowerCornerOf(worldDoorDir.getNormal())),
+                                    1.0F);
+                            Vec3 localDir = localTip.subtract(localOrigin);
+                            double dot = localDir.x * rx + localDir.z * rz;
+                            if (Math.abs(dot) > 0.10D) {
+                                return dot < 0.0D ? -1 : 1;
+                            }
+                        }
+                    }
+                } catch (RuntimeException ignored) {
+                }
+            }
+            Vec3 localStation = carriageEntity.toLocalVector(
+                    Vec3.atCenterOf(stationPos), 1.0F);
+            double sDot = (localStation.x - center.x) * rx
+                    + (localStation.z - center.z) * rz;
+            if (Math.abs(sDot) > 0.20D && Math.abs(sDot) < 32.0D) {
+                return sDot < 0.0D ? -1 : 1;
+            }
+        }
+
+        // 3. Fallback if carriage only has doors on one side
+        if (allDoorCount > 0 && Math.abs(allDoorSum / allDoorCount) > 0.25D) {
+            return allDoorSum < 0.0D ? -1 : 1;
+        }
+        return 0;
+    }
+
     private static long dynamicEtaTicks(Train train, double distance) {
         return TrainEtaEstimator.estimateTicks(distance, train.speed,
                 Math.min(Math.abs(train.targetSpeed), Math.max(0.001D, train.maxSpeed())),

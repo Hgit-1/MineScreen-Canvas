@@ -51,6 +51,8 @@ public final class TrafficDisplayEditorScreen extends ResponsiveMineScreen {
     private final String initialTemplateId;
     private final String initialOverlayTemplateId;
     private MineScreenEditBox line;
+    private MineScreenEditBox quickLineName;
+    private MineScreenEditBox quickLineColors;
     private MineScreenEditBox destination;
     private MineScreenEditBox current;
     private MineScreenEditBox next;
@@ -143,8 +145,26 @@ public final class TrafficDisplayEditorScreen extends ResponsiveMineScreen {
         int inner = panelWidth - 32;
         int half = (inner - 8) / 2;
         int contentTop = top + 79;
+        String rawLine = initial.trafficLine(backSide);
+        String initialCleanLine = extractCleanLineNames(rawLine);
+        String initialLineColors = extractLineColors(rawLine, initial.trafficStatus(backSide),
+                initial.textColor(backSide));
         line = field(left + 16, contentTop, half, "screen.minescreen.traffic.line",
-                initial.trafficLine(backSide));
+                initialCleanLine);
+        quickLineName = field(left + 16, contentTop + 106, half,
+                "screen.minescreen.traffic.quick_line_name", initialCleanLine);
+        quickLineColors = field(left + 24 + half, contentTop + 106, half,
+                "screen.minescreen.traffic.quick_line_colors", initialLineColors);
+        quickLineName.setResponder(val -> {
+            if (line != null && !line.getValue().equals(val)) {
+                line.setValue(val);
+            }
+        });
+        line.setResponder(val -> {
+            if (quickLineName != null && !quickLineName.getValue().equals(val)) {
+                quickLineName.setValue(val);
+            }
+        });
         destination = field(left + 24 + half, contentTop, half,
                 "screen.minescreen.traffic.destination", initial.trafficDestination(backSide));
         current = field(left + 16, contentTop + 34, half, "screen.minescreen.traffic.current",
@@ -271,8 +291,71 @@ public final class TrafficDisplayEditorScreen extends ResponsiveMineScreen {
                     "screen.minescreen.traffic.hint_map_template");
             case "screen.minescreen.traffic.template" -> Component.translatable(
                     "screen.minescreen.traffic.hint_template");
+            case "screen.minescreen.traffic.quick_line_name" -> Component.literal(
+                    "输入线路名，或选 @train(列车名) / @dest(终点站)");
+            case "screen.minescreen.traffic.quick_line_colors" -> Component.literal(
+                    "例如: #008542 或 #D22630, #FFB81C");
             default -> Component.empty();
         };
+    }
+
+    private static final java.util.regex.Pattern INLINE_COLOR_PATTERN =
+            java.util.regex.Pattern.compile("(?i)#([0-9a-f]{6,8})\\b");
+
+    private static String extractCleanLineNames(String rawLine) {
+        if (rawLine == null || rawLine.isBlank() || rawLine.trim().equalsIgnoreCase("Line 1")) {
+            return "";
+        }
+        String withoutColors = INLINE_COLOR_PATTERN.matcher(rawLine).replaceAll("");
+        String[] parts = withoutColors.split("[,;/]+");
+        List<String> names = new ArrayList<>();
+        for (String part : parts) {
+            String trimmed = part.trim();
+            if (!trimmed.isEmpty()) names.add(trimmed);
+        }
+        return String.join(", ", names);
+    }
+
+    private static String extractLineColors(String rawLine, String rawStatus, int textColor) {
+        List<String> colors = new ArrayList<>();
+        for (String source : new String[] { rawLine, rawStatus }) {
+            if (source == null || source.isBlank()) continue;
+            java.util.regex.Matcher m = INLINE_COLOR_PATTERN.matcher(source);
+            while (m.find()) {
+                String hex = m.group(1).toUpperCase(Locale.ROOT);
+                if (hex.length() == 8) hex = hex.substring(2);
+                colors.add("#" + hex);
+            }
+            if (!colors.isEmpty()) return String.join(", ", colors);
+        }
+        if ((textColor & 0x00FFFFFF) != 0x00FFFFFF) {
+            return String.format(Locale.ROOT, "#%06X", textColor & 0x00FFFFFF);
+        }
+        return "";
+    }
+
+    private static String combineLineNamesAndColors(String namesInput, String colorsInput) {
+        String cleanNames = namesInput == null ? "" : namesInput.trim();
+        String cleanColors = colorsInput == null ? "" : colorsInput.trim();
+        if (cleanColors.isEmpty()) return cleanNames;
+        if (cleanNames.isEmpty() || cleanNames.equalsIgnoreCase("Line 1")) {
+            return cleanColors;
+        }
+        String[] nameParts = cleanNames.split("[,;/]+");
+        String[] colorParts = cleanColors.split("[,;/]+");
+        int count = Math.max(nameParts.length, colorParts.length);
+        List<String> combined = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            String n = i < nameParts.length
+                    ? INLINE_COLOR_PATTERN.matcher(nameParts[i]).replaceAll("").trim() : "";
+            String c = i < colorParts.length ? colorParts[i].trim()
+                    : colorParts.length == 1 ? colorParts[0].trim() : "";
+            if (!c.isEmpty() && !c.startsWith("#")) c = "#" + c;
+            if (!n.isEmpty() && !c.isEmpty()) combined.add(n + " " + c);
+            else if (!n.isEmpty()) combined.add(n);
+            else if (!c.isEmpty()) combined.add(c);
+        }
+        return String.join(", ", combined);
     }
 
     /**
@@ -290,6 +373,59 @@ public final class TrafficDisplayEditorScreen extends ResponsiveMineScreen {
         }
         String query = target.getValue().trim().toLowerCase(Locale.ROOT);
         Map<String, StationSuggestion> values = new LinkedHashMap<>();
+        if (target == quickLineName) {
+            addSuggestion(values, "@train",
+                    "@train  ·  显示列车名称 (Use Create Train Name)");
+            addSuggestion(values, "@dest",
+                    "@dest  ·  显示终点站名称 (Use Destination Station)");
+            suggestionTarget = target;
+            stationSuggestions = List.copyOf(values.values());
+            selectedSuggestion = Math.max(0,
+                    Math.min(selectedSuggestion, Math.max(0, stationSuggestions.size() - 1)));
+            return;
+        }
+        if (target == quickLineColors) {
+            addSuggestion(values, "#008542", "#008542  ·  Melbourne Green (Frankston / Werribee)");
+            addSuggestion(values, "#279FD5", "#279FD5  ·  Melbourne Light Blue (Cranbourne / Pakenham)");
+            addSuggestion(values, "#152C6B", "#152C6B  ·  Melbourne Dark Blue (Glen Waverley / Belgrave)");
+            addSuggestion(values, "#FFB81C", "#FFB81C  ·  Melbourne Yellow (Sunbury / Craigieburn)");
+            addSuggestion(values, "#D22630", "#D22630  ·  Melbourne Red (Mernda / Hurstbridge)");
+            addSuggestion(values, "#F178AF", "#F178AF  ·  Melbourne Pink (Sandringham)");
+            addSuggestion(values, "#D22630, #FFB81C",
+                    "#D22630, #FFB81C  ·  2 Platforms (Plat 1 Red, Plat 2 Yellow)");
+            addSuggestion(values, "#D22630, #152C6B, #FFB81C, #008542",
+                    "#D22630, #152C6B, #FFB81C, #008542  ·  4 Platforms (Melbourne Central)");
+            suggestionTarget = target;
+            stationSuggestions = List.copyOf(values.values());
+            selectedSuggestion = Math.max(0,
+                    Math.min(selectedSuggestion, Math.max(0, stationSuggestions.size() - 1)));
+            return;
+        }
+        if (target == template) {
+            List<TrafficTemplateRepository.Template> allTemplates = new ArrayList<>(
+                    TrafficTemplateRepository.availableTemplates());
+            if (trafficRole == TrafficDisplayRole.ONBOARD) {
+                allTemplates.sort(java.util.Comparator.comparingInt(
+                        entry -> entry.id().startsWith("melbourne_cabin") ? 0 : 1));
+            }
+            for (TrafficTemplateRepository.Template entry : allTemplates) {
+                addSuggestion(values, entry.id(), entry.id() + "  ·  " + entry.name());
+            }
+            boolean exactCurrent = values.containsKey(query);
+            List<StationSuggestion> rankedTemplates = new ArrayList<>();
+            for (StationSuggestion suggestion : values.values()) {
+                String haystack = (suggestion.value() + " " + suggestion.label())
+                        .toLowerCase(Locale.ROOT);
+                if (query.isBlank() || exactCurrent || haystack.contains(query)) {
+                    rankedTemplates.add(suggestion);
+                }
+            }
+            suggestionTarget = target;
+            stationSuggestions = List.copyOf(rankedTemplates.stream().limit(8).toList());
+            selectedSuggestion = Math.max(0,
+                    Math.min(selectedSuggestion, Math.max(0, stationSuggestions.size() - 1)));
+            return;
+        }
         String templateId = template == null ? initial.templateId(backSide) : template.getValue();
         Map<String, String> bindings = TrafficTemplateRepository.metadata(templateId)
                 .stationBindings();
@@ -378,6 +514,9 @@ public final class TrafficDisplayEditorScreen extends ResponsiveMineScreen {
 
     private MineScreenEditBox focusedStationField() {
         if (stationBinding != null && stationBinding.isFocused()) return stationBinding;
+        if (template != null && template.isFocused()) return template;
+        if (quickLineName != null && quickLineName.isFocused()) return quickLineName;
+        if (quickLineColors != null && quickLineColors.isFocused()) return quickLineColors;
         if (stationTurnaround != null && stationTurnaround.isFocused()) return stationTurnaround;
         return null;
     }
@@ -385,6 +524,9 @@ public final class TrafficDisplayEditorScreen extends ResponsiveMineScreen {
     private boolean suggestionsVisibleOnCurrentPage(MineScreenEditBox target) {
         if (target == stationBinding) {
             return trafficRole == TrafficDisplayRole.PLATFORM && page == 0;
+        }
+        if (target == template || target == quickLineName || target == quickLineColors) {
+            return page == 0;
         }
         return target == stationTurnaround && page == 2;
     }
@@ -424,14 +566,17 @@ public final class TrafficDisplayEditorScreen extends ResponsiveMineScreen {
         error = Component.translatable("screen.minescreen.traffic.station_suggestion_selected",
                 suggestion.label());
         messageColor = 0xFF62E6A7;
-        refreshStationSuggestions();
+        target.setFocused(false);
+        setFocused(null);
+        suggestionTarget = null;
+        stationSuggestions = List.of();
+        selectedSuggestion = 0;
     }
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         double logicalX = logicalMouseX(mouseX);
         double logicalY = logicalMouseY(mouseY);
-        refreshStationSuggestions();
         if (suggestionTarget != null && suggestionsVisibleOnCurrentPage(suggestionTarget)
                 && !stationSuggestions.isEmpty()) {
             int popupY = suggestionTarget.getY() + suggestionTarget.getHeight() + 1;
@@ -446,7 +591,17 @@ public final class TrafficDisplayEditorScreen extends ResponsiveMineScreen {
             }
         }
         boolean handled = super.mouseClicked(mouseX, mouseY, button);
-        refreshStationSuggestions();
+        MineScreenEditBox active = focusedStationField();
+        if (active != null && (logicalX < active.getX()
+                || logicalX >= active.getX() + active.getWidth()
+                || logicalY < active.getY()
+                || logicalY >= active.getY() + active.getHeight())) {
+            active.setFocused(false);
+            suggestionTarget = null;
+            stationSuggestions = List.of();
+        } else {
+            refreshStationSuggestions();
+        }
         return handled;
     }
 
@@ -459,6 +614,7 @@ public final class TrafficDisplayEditorScreen extends ResponsiveMineScreen {
         line.visible = destination.visible = current.visible = next.visible = eta.visible =
                 status.visible = contentPage;
         template.visible = setupPage;
+        quickLineName.visible = quickLineColors.visible = setupPage;
         importButton.visible = importButton.active = setupPage;
         stationAliasButton.visible = setupPage;
         stationAliasButton.active = setupPage
@@ -528,6 +684,11 @@ public final class TrafficDisplayEditorScreen extends ResponsiveMineScreen {
     }
 
     private void selectPage(int requestedPage) {
+        if (page == 0 && requestedPage != 0) {
+            line.setValue(quickLineName.getValue());
+        } else if (page == 1 && requestedPage != 1) {
+            quickLineName.setValue(extractCleanLineNames(line.getValue()));
+        }
         page = Math.max(0, Math.min(2, requestedPage));
         error = Component.empty();
         messageColor = 0xFFFF6B6B;
@@ -559,6 +720,12 @@ public final class TrafficDisplayEditorScreen extends ResponsiveMineScreen {
                     ? "screen.minescreen.traffic.station_binding"
                     : "screen.minescreen.traffic.content_source", left + 16, top + 106);
             drawLabel(graphics, "screen.minescreen.traffic.template", left + 16, top + 140);
+            graphics.drawString(font,
+                    Component.literal("线路名称 / Line Name (多站台用逗号分隔)"),
+                    left + 16, top + 174, 0xFF9EB0C4, false);
+            graphics.drawString(font,
+                    Component.literal("线路/站台颜色 / Line Color (#RRGGBB, 逗号分隔)"),
+                    left + 24 + half, top + 174, 0xFF9EB0C4, false);
             renderQuickSetupGuide(graphics, inner);
         } else if (page == 1) {
             drawLabel(graphics, "screen.minescreen.traffic.line", left + 16, top + 68);
@@ -631,13 +798,10 @@ public final class TrafficDisplayEditorScreen extends ResponsiveMineScreen {
     }
 
     private void renderQuickSetupGuide(GuiGraphics graphics, int inner) {
-        int cardTop = top + 177;
-        int cardBottom = top + 229;
+        int cardTop = top + 207;
+        int cardBottom = top + 231;
         graphics.fill(left + 16, cardTop, left + 16 + inner, cardBottom, 0xFF151D28);
         graphics.fill(left + 16, cardTop, left + 20, cardBottom, workflowColor());
-        drawWrapped(graphics, Component.translatable("screen.minescreen.traffic.quick_mode_status",
-                        modeDescription()),
-                left + 27, cardTop + 4, inner - 22, 0xFFF4F7FB, 1);
         Component stationState;
         if (trafficRole == TrafficDisplayRole.ONBOARD) {
             stationState = Component.translatable("screen.minescreen.traffic.quick_carriage_source");
@@ -649,20 +813,12 @@ public final class TrafficDisplayEditorScreen extends ResponsiveMineScreen {
             stationState = Component.translatable("screen.minescreen.traffic.station_binding_current",
                     stationBinding.getValue());
         }
-        drawWrapped(graphics, stationState, left + 27, cardTop + 17, inner - 22,
+        drawWrapped(graphics, stationState, left + 27, cardTop + 3, inner - 22,
                 trafficRole == TrafficDisplayRole.ONBOARD
                         || stationMode == StationDisplayMode.MANUAL
                         || !stationBinding.getValue().isBlank()
                         ? 0xFF62E6A7 : 0xFFFFC26B, 1);
-        int stationCount = TrafficTemplateRepository.stationProfiles(template.getValue()).size();
-        Component templateState = stationCount == 0
-                ? Component.translatable("screen.minescreen.traffic.quick_template_builtin",
-                        template.getValue())
-                : Component.translatable("screen.minescreen.traffic.quick_template_imported",
-                        template.getValue(), stationCount);
-        drawWrapped(graphics, templateState, left + 27, cardTop + 30, inner - 22,
-                0xFF9EB0C4, 1);
-        drawWrapped(graphics, nextAction(), left + 27, cardTop + 43, inner - 22,
+        drawWrapped(graphics, nextAction(), left + 27, cardTop + 13, inner - 22,
                 workflowReady() ? 0xFF62E6A7 : 0xFFFFD166, 1);
     }
 
@@ -981,6 +1137,17 @@ public final class TrafficDisplayEditorScreen extends ResponsiveMineScreen {
 
     private boolean save(boolean close) {
         if (!prepareWorkflowForSave()) return false;
+        String activeLineName = page == 1 ? line.getValue() : quickLineName.getValue();
+        String combinedLine = combineLineNamesAndColors(activeLineName, quickLineColors.getValue());
+        line.setValue(combinedLine);
+        String colorsRaw = quickLineColors.getValue() == null ? ""
+                : quickLineColors.getValue().trim();
+        if (!colorsRaw.isEmpty() && !colorsRaw.contains(",") && !colorsRaw.contains(";")) {
+            Integer singleColor = parseColorStrict(colorsRaw);
+            if (singleColor != null) {
+                textColor.setValue(colorString(singleColor));
+            }
+        }
         if (!valid(line) || !valid(destination) || !valid(current) || !valid(next) || !valid(eta)
                 || !valid(status) || !valid(template) || !valid(overlayTemplate)
                 || !valid(trainType)

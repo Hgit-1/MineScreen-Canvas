@@ -71,7 +71,17 @@ public record TrainSchedulePayload(BlockPos stationPos, String trainType, String
     public record Entry(UUID trainId, String trainName, String trainType, String origin,
             String destination,
             String direction, boolean loop, int carriageCount, long etaTicks,
-            long dwellTicks, boolean waitingForSignal) {
+            long dwellTicks, boolean waitingForSignal, List<String> upcomingStops) {
+        private static final int MAX_STOPS = 32;
+
+        public Entry(UUID trainId, String trainName, String trainType, String origin,
+                String destination,
+                String direction, boolean loop, int carriageCount, long etaTicks,
+                long dwellTicks, boolean waitingForSignal) {
+            this(trainId, trainName, trainType, origin, destination, direction, loop,
+                    carriageCount, etaTicks, dwellTicks, waitingForSignal, List.of());
+        }
+
         public Entry {
             trainId = trainId == null ? new UUID(0L, 0L) : trainId;
             trainName = limited(trainName, 128);
@@ -82,6 +92,9 @@ public record TrainSchedulePayload(BlockPos stationPos, String trainType, String
             carriageCount = Math.max(0, Math.min(128, carriageCount));
             etaTicks = Math.max(0L, etaTicks);
             dwellTicks = Math.max(-1L, dwellTicks);
+            upcomingStops = upcomingStops == null ? List.of()
+                    : upcomingStops.stream().limit(MAX_STOPS)
+                            .map(stop -> limited(stop, 128)).toList();
         }
 
         private void encode(RegistryFriendlyByteBuf buffer) {
@@ -96,14 +109,31 @@ public record TrainSchedulePayload(BlockPos stationPos, String trainType, String
             buffer.writeVarLong(etaTicks);
             buffer.writeLong(dwellTicks);
             buffer.writeBoolean(waitingForSignal);
+            buffer.writeVarInt(upcomingStops.size());
+            for (String stop : upcomingStops) {
+                buffer.writeUtf(stop, 128);
+            }
         }
 
         private static Entry decode(RegistryFriendlyByteBuf buffer) {
-            return new Entry(buffer.readUUID(), buffer.readUtf(128), buffer.readUtf(96),
-                    buffer.readUtf(128),
-                    buffer.readUtf(128), buffer.readUtf(8), buffer.readBoolean(),
-                    buffer.readVarInt(),
-                    buffer.readVarLong(), buffer.readLong(), buffer.readBoolean());
+            UUID trainId = buffer.readUUID();
+            String trainName = buffer.readUtf(128);
+            String trainType = buffer.readUtf(96);
+            String origin = buffer.readUtf(128);
+            String destination = buffer.readUtf(128);
+            String direction = buffer.readUtf(8);
+            boolean loop = buffer.readBoolean();
+            int carriageCount = buffer.readVarInt();
+            long etaTicks = buffer.readVarLong();
+            long dwellTicks = buffer.readLong();
+            boolean waitingForSignal = buffer.readBoolean();
+            int stopCount = Math.max(0, Math.min(MAX_STOPS, buffer.readVarInt()));
+            List<String> upcomingStops = new ArrayList<>(stopCount);
+            for (int index = 0; index < stopCount; index++) {
+                upcomingStops.add(buffer.readUtf(128));
+            }
+            return new Entry(trainId, trainName, trainType, origin, destination, direction,
+                    loop, carriageCount, etaTicks, dwellTicks, waitingForSignal, upcomingStops);
         }
 
     }

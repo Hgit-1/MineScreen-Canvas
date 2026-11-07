@@ -85,6 +85,149 @@ public final class CreateTrainScheduleService {
                 turnaroundStation, maximum));
     }
 
+    /**
+     * Resolves all platforms belonging to the current station concourse (e.g. {@code St2_1} and
+     * {@code St2_2} for station {@code St2}) so main-hall displays can show which platform has
+     * which trains running.
+     */
+    public static List<PlatformSnapshot> concoursePlatforms(Level level, BlockPos displayPos,
+            String bindingTemplateId, String explicitStationName, String preferredStationName,
+            String trainType, String turnaroundStation, boolean alwaysGroupSiblings,
+            int maxPerPlatform) {
+        if (level == null || displayPos == null) return List.of();
+        int radius = MineScreenConfig.CREATE_STATION_SCAN_RADIUS.get();
+        String explicit = explicitStationName == null ? "" : explicitStationName.trim();
+        List<TrafficStationLocator.StationMatch> allNearby =
+                TrafficStationLocator.cachedNearbyStations(level, displayPos,
+                        Math.max(radius, TrafficStationLocator.MAX_SCAN_RADIUS));
+        if (allNearby.isEmpty()) return List.of();
+
+        List<TrafficStationLocator.StationMatch> selectedMatches = new java.util.ArrayList<>();
+        if (explicit.contains(",") || explicit.contains(";") || explicit.contains("/")) {
+            for (String token : explicit.split("[,;/]+")) {
+                String wanted = token.trim();
+                if (wanted.isEmpty()) continue;
+                for (TrafficStationLocator.StationMatch candidate : allNearby) {
+                    if (candidate.createStationName().equalsIgnoreCase(wanted)) {
+                        selectedMatches.add(candidate);
+                        break;
+                    }
+                }
+            }
+        } else if (!explicit.isBlank() && !alwaysGroupSiblings
+                && hasExplicitPlatformSuffix(explicit)) {
+            TrafficStationLocator.StationMatch exact = TrafficStationLocator.resolveNamedNearby(
+                    level, displayPos, explicit,
+                    Math.max(radius, TrafficStationLocator.MAX_SCAN_RADIUS));
+            if (exact != null) selectedMatches.add(exact);
+        } else {
+            String targetBase = "";
+            if (!explicit.isBlank()) {
+                targetBase = extractBaseStationName(explicit);
+            } else {
+                TrafficStationLocator.StationMatch primary =
+                        TrafficTemplateRepository.stationMatch(bindingTemplateId, level);
+                if (primary == null) {
+                    primary = TrafficStationLocator.resolveNearby(level, displayPos,
+                            preferredStationName, radius);
+                }
+                if (primary != null) {
+                    targetBase = extractBaseStationName(primary.createStationName());
+                }
+            }
+            if (!targetBase.isBlank()) {
+                final String baseCheck = targetBase;
+                for (TrafficStationLocator.StationMatch candidate : allNearby) {
+                    if (candidate.distance() <= radius
+                            && extractBaseStationName(candidate.createStationName())
+                                    .equalsIgnoreCase(baseCheck)) {
+                        selectedMatches.add(candidate);
+                    }
+                }
+            }
+            if (selectedMatches.isEmpty() && !explicit.isBlank()) {
+                TrafficStationLocator.StationMatch exact = TrafficStationLocator.resolveNamedNearby(
+                        level, displayPos, explicit,
+                        Math.max(radius, TrafficStationLocator.MAX_SCAN_RADIUS));
+                if (exact != null) selectedMatches.add(exact);
+            }
+            if (selectedMatches.isEmpty()) {
+                for (TrafficStationLocator.StationMatch candidate : allNearby) {
+                    if (candidate.distance() <= radius && selectedMatches.size() < 4) {
+                        selectedMatches.add(candidate);
+                    }
+                }
+            }
+            selectedMatches.sort(java.util.Comparator
+                    .comparingInt((TrafficStationLocator.StationMatch m) ->
+                            platformSortKey(m.createStationName()))
+                    .thenComparing(TrafficStationLocator.StationMatch::createStationName));
+        }
+
+        List<PlatformSnapshot> result = new java.util.ArrayList<>(selectedMatches.size());
+        for (int i = 0; i < selectedMatches.size(); i++) {
+            TrafficStationLocator.StationMatch match = selectedMatches.get(i);
+            String name = match.createStationName();
+            String base = extractBaseStationName(name);
+            String plat = extractPlatformLabel(name, i + 1);
+            Snapshot snap = snapshot(level, match.position(), trainType, turnaroundStation,
+                    maxPerPlatform);
+            result.add(new PlatformSnapshot(plat, name, base, match.position(), snap));
+        }
+        return List.copyOf(result);
+    }
+
+    private static final java.util.regex.Pattern PLATFORM_SUFFIX_PATTERN =
+            java.util.regex.Pattern.compile(
+                    "(?iu)^(.+?)(?:[\\s_-]+(?:platform|plat|p|站台)\\s*([0-9]{1,2}[a-z]?)"
+                            + "|[\\s]+([0-9]{1,2})\\s*站台"
+                            + "|[_-]([0-9]{1,2}[a-z]?))$");
+
+    public static boolean hasExplicitPlatformSuffix(String stationName) {
+        if (stationName == null || stationName.isBlank()) return false;
+        return PLATFORM_SUFFIX_PATTERN.matcher(stationName.trim()).matches();
+    }
+
+    public static String extractBaseStationName(String stationName) {
+        if (stationName == null || stationName.isBlank()) return "";
+        String trimmed = stationName.trim();
+        java.util.regex.Matcher matcher = PLATFORM_SUFFIX_PATTERN.matcher(trimmed);
+        if (matcher.matches()) {
+            String base = matcher.group(1).trim();
+            if (!base.isBlank()) return base;
+        }
+        return trimmed;
+    }
+
+    public static String extractPlatformLabel(String stationName, int fallbackIndex) {
+        if (stationName != null && !stationName.isBlank()) {
+            java.util.regex.Matcher matcher = PLATFORM_SUFFIX_PATTERN.matcher(stationName.trim());
+            if (matcher.matches()) {
+                for (int g = 2; g <= matcher.groupCount(); g++) {
+                    String val = matcher.group(g);
+                    if (val != null && !val.isBlank()) return val.toUpperCase(java.util.Locale.ROOT);
+                }
+            }
+        }
+        return Integer.toString(Math.max(1, fallbackIndex));
+    }
+
+    private static int platformSortKey(String stationName) {
+        String label = extractPlatformLabel(stationName, 99);
+        String digits = label.replaceAll("[^0-9]", "");
+        if (!digits.isEmpty()) {
+            try {
+                return Integer.parseInt(digits);
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return 99;
+    }
+
+    public record PlatformSnapshot(String platformLabel, String stationName,
+            String baseStationName, BlockPos position, Snapshot snapshot) {
+    }
+
     public record Snapshot(String stationName, List<Departure> departures, long gameTime,
             int totalTrains, int activeScheduleTrains, int filterMatchedTrains) {
         public static final Snapshot EMPTY = new Snapshot("", List.of(), 0L, 0, 0, 0);
@@ -123,7 +266,16 @@ public final class CreateTrainScheduleService {
     public record Departure(java.util.UUID trainId, String trainName, String trainType,
             String origin,
             String destination, String direction, boolean loop, int carriageCount,
-            long etaTicks, long dwellTicks, boolean waitingForSignal) {
+            long etaTicks, long dwellTicks, boolean waitingForSignal,
+            List<String> upcomingStops) {
+        public Departure(java.util.UUID trainId, String trainName, String trainType,
+                String origin,
+                String destination, String direction, boolean loop, int carriageCount,
+                long etaTicks, long dwellTicks, boolean waitingForSignal) {
+            this(trainId, trainName, trainType, origin, destination, direction, loop,
+                    carriageCount, etaTicks, dwellTicks, waitingForSignal, List.of());
+        }
+
         public Departure {
             trainId = trainId == null ? new java.util.UUID(0L, 0L) : trainId;
             trainName = safe(trainName);
@@ -134,6 +286,7 @@ public final class CreateTrainScheduleService {
             carriageCount = Math.max(0, Math.min(128, carriageCount));
             etaTicks = Math.max(0L, etaTicks);
             dwellTicks = Math.max(-1L, dwellTicks);
+            upcomingStops = upcomingStops == null ? List.of() : List.copyOf(upcomingStops);
         }
 
         public int etaSeconds() {

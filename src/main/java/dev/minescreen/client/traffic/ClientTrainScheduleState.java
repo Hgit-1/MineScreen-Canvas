@@ -63,7 +63,8 @@ public final class ClientTrainScheduleState {
             var departure = new CreateTrainScheduleService.Departure(value.trainId(),
                     value.trainName(),
                     value.trainType(), value.origin(), value.destination(), value.direction(),
-                    value.loop(), value.carriageCount(), eta, dwell, value.waitingForSignal());
+                    value.loop(), value.carriageCount(), eta, dwell, value.waitingForSignal(),
+                    value.upcomingStops());
             String id = identity(departure);
             long target = EtaTimeline.target(now, eta);
             CreateTrainScheduleService.Departure old = previousDepartures.get(id);
@@ -93,7 +94,7 @@ public final class ClientTrainScheduleState {
                             value.trainName(),
                             value.trainType(), value.origin(), value.destination(),
                             value.direction(), value.loop(), value.carriageCount(), eta, dwell,
-                            value.waitingForSignal());
+                            value.waitingForSignal(), value.upcomingStops());
                 }
             }
             arrivalTargets.put(id, target);
@@ -124,7 +125,8 @@ public final class ClientTrainScheduleState {
             return new CreateTrainScheduleService.Departure(value.trainId(), value.trainName(),
                     value.trainType(),
                     value.origin(), value.destination(), value.direction(),
-                    value.loop(), value.carriageCount(), eta, dwell, value.waitingForSignal());
+                    value.loop(), value.carriageCount(), eta, dwell, value.waitingForSignal(),
+                    value.upcomingStops());
         }).toList();
         return new CreateTrainScheduleService.Snapshot(snapshot.stationName(), departures,
                 snapshot.gameTime(), snapshot.totalTrains(), snapshot.activeScheduleTrains(),

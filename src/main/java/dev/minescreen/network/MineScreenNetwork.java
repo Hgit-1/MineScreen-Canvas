@@ -122,7 +122,8 @@ public final class MineScreenNetwork {
                 new TrainSchedulePayload.Entry(value.trainId(), value.trainName(), value.trainType(),
                         value.origin(), value.destination(), value.direction(),
                         value.loop(), value.carriageCount(), value.etaTicks(),
-                        value.dwellTicks(), value.waitingForSignal())).toList();
+                        value.dwellTicks(), value.waitingForSignal(),
+                        value.upcomingStops())).toList();
         context.reply(new TrainSchedulePayload(payload.stationPos(), payload.trainType(),
                 payload.turnaroundStation(), snapshot.stationName(), snapshot.gameTime(),
                 snapshot.totalTrains(),

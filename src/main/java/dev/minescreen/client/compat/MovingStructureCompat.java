@@ -57,6 +57,19 @@ public final class MovingStructureCompat {
         return BRIDGE.carriageTrainStatus(virtualLevel, turnaroundStation);
     }
 
+    /**
+     * Returns -1 when the carriage's active/upcoming doors open toward the left (-screenRight)
+     * of the rendered display, +1 when they open toward the right (+screenRight), or 0 if unknown.
+     */
+    public static int carriageDoorSide(Level virtualLevel, Vec3 screenRight) {
+        return BRIDGE.carriageDoorSide(virtualLevel, screenRight, "");
+    }
+
+    public static int carriageDoorSide(Level virtualLevel, Vec3 screenRight,
+            String targetStationName) {
+        return BRIDGE.carriageDoorSide(virtualLevel, screenRight, targetStationName);
+    }
+
     /** Returns a local block hit when the crosshair is pointing at a carriage display. */
     public static MovingDisplayHit findDisplayHit() {
         return BRIDGE.findDisplayHit();
@@ -117,6 +130,12 @@ public final class MovingStructureCompat {
             }
 
             @Override
+            public int carriageDoorSide(Level virtualLevel, Vec3 screenRight,
+                    String targetStationName) {
+                return 0;
+            }
+
+            @Override
             public MovingDisplayHit findDisplayHit() {
                 return null;
             }
@@ -139,6 +158,8 @@ public final class MovingStructureCompat {
         void illuminateTestPanel(Level virtualLevel, BlockPos localPosition, Direction facing);
 
         CarriageTrainStatus carriageTrainStatus(Level virtualLevel, String turnaroundStation);
+
+        int carriageDoorSide(Level virtualLevel, Vec3 screenRight, String targetStationName);
 
         MovingDisplayHit findDisplayHit();
 

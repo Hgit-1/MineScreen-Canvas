@@ -63,10 +63,18 @@ final class CreateTrainSegmentLearningService {
 
     static long estimateSegment(ServerLevel level, Train train, GlobalStation from,
             GlobalStation to) {
-        if (!MineScreenConfig.CREATE_ETA_LEARNING.get()) return -1L;
-        CreateTrainSegmentRuntimeData.RouteKey key = key(train, from, to);
-        return key == null ? -1L
-                : CreateTrainSegmentRuntimeData.get(level.getServer()).estimate(key);
+        if (!MineScreenConfig.CREATE_ETA_LEARNING.get() || from == null || to == null
+                || from.id == null || to.id == null) return -1L;
+        CreateTrainSegmentRuntimeData data = CreateTrainSegmentRuntimeData.get(level.getServer());
+        CreateTrainSegmentRuntimeData.RouteKey primary = key(train, from.id, to.id,
+                train.currentlyBackwards);
+        if (primary != null) {
+            long est = data.estimate(primary);
+            if (est > 0L) return est;
+        }
+        CreateTrainSegmentRuntimeData.RouteKey reversed = key(train, from.id, to.id,
+                !train.currentlyBackwards);
+        return reversed == null ? -1L : data.estimate(reversed);
     }
 
     private static void observe(CreateTrainSegmentRuntimeData data, TrainTracker tracker,
@@ -127,12 +135,17 @@ final class CreateTrainSegmentLearningService {
     }
 
     private static CreateTrainSegmentRuntimeData.RouteKey key(Train train, UUID from, UUID to) {
+        return train == null ? null : key(train, from, to, train.currentlyBackwards);
+    }
+
+    private static CreateTrainSegmentRuntimeData.RouteKey key(Train train, UUID from, UUID to,
+            boolean backwards) {
         if (train == null || train.graph == null || train.graph.id == null
                 || from == null || to == null) return null;
         TrainNameFormat name = TrainNameFormat.parse(
                 train.name == null ? "" : train.name.getString());
         return new CreateTrainSegmentRuntimeData.RouteKey(train.graph.id, from, to,
-                train.currentlyBackwards, name.serviceTypeOrLegacy());
+                backwards, name.serviceTypeOrLegacy());
     }
 
     private static boolean signalAffectingMotion(Train train) {

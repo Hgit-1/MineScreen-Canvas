@@ -68,7 +68,24 @@ public final class TrafficTemplateRepository {
 
     public static Template resolve(String id) {
         String safe = safeId(id);
+        for (Template builtin : Template.MELBOURNE_TEMPLATES) {
+            if (safe.equals(builtin.id())) {
+                return TEMPLATES.getOrDefault(safe, builtin);
+            }
+        }
         return TEMPLATES.getOrDefault(safe, Template.BUILTIN);
+    }
+
+    public static List<Template> availableTemplates() {
+        Map<String, Template> all = new java.util.LinkedHashMap<>();
+        all.put(Template.BUILTIN.id(), Template.BUILTIN);
+        for (Template builtin : Template.MELBOURNE_TEMPLATES) {
+            all.put(builtin.id(), builtin);
+        }
+        TEMPLATES.values().stream()
+                .sorted(java.util.Comparator.comparing(Template::id))
+                .forEach(template -> all.putIfAbsent(template.id(), template));
+        return List.copyOf(all.values());
     }
 
     public static TrafficMetadata metadata(String id) {
@@ -198,6 +215,7 @@ public final class TrafficTemplateRepository {
         Map<String, SynchronizedTemplate> synchronizedLoaded = new HashMap<>();
         Set<Path> activeFolders = new HashSet<>();
         loaded.put(Template.BUILTIN.id(), Template.BUILTIN);
+        loaded.put(Template.MELBOURNE_METRO.id(), Template.MELBOURNE_METRO);
         try {
             Files.createDirectories(root);
             try (var directories = Files.list(root)) {
@@ -1015,6 +1033,39 @@ public final class TrafficTemplateRepository {
         public static final Template BUILTIN = new Template("builtin_transit", "Built-in Transit",
                 0xFF101820, 0xFFFFFFFF, 0xFFFFA726, "builtin_transit_v1", null, null,
                 List.of(), TextSequence.EMPTY, TrafficMetadata.EMPTY);
+        public static final Template MELBOURNE_METRO = new Template("melbourne_metro",
+                "Melbourne Metro PID (Platform Stops)", 0xFFF3F5F7, 0xFF1C242C, 0xFF008542,
+                "melbourne_metro_v1", null, null, List.of(), TextSequence.EMPTY,
+                TrafficMetadata.EMPTY);
+        public static final Template MELBOURNE_CONCOURSE = new Template("melbourne_concourse",
+                "Melbourne Hall (Departure Cards)", 0xFFF3F5F7, 0xFF1C242C, 0xFF279FD5,
+                "melbourne_concourse_v1", null, null, List.of(), TextSequence.EMPTY,
+                TrafficMetadata.EMPTY);
+        public static final Template MELBOURNE_CONCOURSE_SPLIT = new Template(
+                "melbourne_concourse_split",
+                "Melbourne Hall (Split by Platform)", 0xFFF3F5F7, 0xFF1C242C, 0xFFD22630,
+                "melbourne_concourse_split_v1", null, null, List.of(), TextSequence.EMPTY,
+                TrafficMetadata.EMPTY);
+        public static final Template MELBOURNE_WAYFINDING = new Template("melbourne_wayfinding",
+                "Melbourne Hall (Platform Directory)", 0xFFF3F5F7, 0xFF1C242C, 0xFF0072CE,
+                "melbourne_wayfinding_v1", null, null, List.of(), TextSequence.EMPTY,
+                TrafficMetadata.EMPTY);
+        public static final Template MELBOURNE_CABIN_AUTO = new Template("melbourne_cabin_auto",
+                "Melbourne Cabin (Auto Route + Arrival)", 0xFF070B10, 0xFFF4F6F8, 0xFF279FD5,
+                "melbourne_cabin_auto_v1", null, null, List.of(), TextSequence.EMPTY,
+                TrafficMetadata.EMPTY);
+        public static final Template MELBOURNE_CABIN_MAP = new Template("melbourne_cabin_map",
+                "Melbourne Cabin (Linear Route Strip)", 0xFF070B10, 0xFFF4F6F8, 0xFF279FD5,
+                "melbourne_cabin_map_v1", null, null, List.of(), TextSequence.EMPTY,
+                TrafficMetadata.EMPTY);
+        public static final Template MELBOURNE_CABIN_NEXT = new Template("melbourne_cabin_next",
+                "Melbourne Cabin (Now Arriving Banner)", 0xFF070B10, 0xFFF4F6F8, 0xFF279FD5,
+                "melbourne_cabin_next_v1", null, null, List.of(), TextSequence.EMPTY,
+                TrafficMetadata.EMPTY);
+        public static final List<Template> MELBOURNE_TEMPLATES = List.of(
+                MELBOURNE_METRO, MELBOURNE_CONCOURSE, MELBOURNE_CONCOURSE_SPLIT,
+                MELBOURNE_WAYFINDING, MELBOURNE_CABIN_AUTO, MELBOURNE_CABIN_MAP,
+                MELBOURNE_CABIN_NEXT);
     }
 
     public record TextSequence(List<TextFrame> frames, boolean loop, int defaultDurationTicks,

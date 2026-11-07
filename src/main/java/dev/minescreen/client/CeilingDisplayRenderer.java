@@ -180,8 +180,19 @@ public final class CeilingDisplayRenderer implements BlockEntityRenderer<Ceiling
                 (group.length() - 0.08D) / logicalWidth, 0.60D / 64.0D);
         poseStack.pushPose();
         poseStack.mulPose(transform);
-        renderInfoStrip(trafficValues(display, 0), logicalWidth, display.getLevel(),
-                poseStack, buffers);
+        String rawTemplateId = display.templateId(0) == null ? ""
+                : display.templateId(0).trim().toLowerCase(java.util.Locale.ROOT);
+        if (rawTemplateId.equals("melbourne_metro")
+                || rawTemplateId.startsWith("melbourne_cabin")) {
+            TrafficValues vals = trafficValues(display, 0);
+            int doorSide = MovingStructureCompat.carriageDoorSide(display.getLevel(), right,
+                    vals.nextStop());
+            renderMelbourneCabinCeiling(display.getLevel(), vals,
+                    rawTemplateId, 0xFF279FD5, doorSide, logicalWidth, 64, poseStack, buffers);
+        } else {
+            renderInfoStrip(trafficValues(display, 0), logicalWidth, display.getLevel(),
+                    poseStack, buffers);
+        }
         renderOverlay(display, 0, logicalWidth, 64, poseStack, buffers);
         poseStack.popPose();
     }
@@ -228,13 +239,15 @@ public final class CeilingDisplayRenderer implements BlockEntityRenderer<Ceiling
             template = TrafficTemplateRepository.Template.BUILTIN;
         }
         TrafficValues values = trafficValues(display, side);
+        int bgColor = template.id().equals("melbourne_metro") ? 0xFF070B10
+                : template.backgroundColor();
         VertexConsumer background = buffers.getBuffer(RenderType.textBackground());
         solidQuad(background, poseStack.last().pose(),
                 facePoint(bottomStart, ridgeStart, horizontal, length, 0, 1, outward),
                 facePoint(bottomStart, ridgeStart, horizontal, length, 1, 1, outward),
                 facePoint(bottomStart, ridgeStart, horizontal, length, 1, 0, outward),
                 facePoint(bottomStart, ridgeStart, horizontal, length, 0, 0, outward),
-                template.backgroundColor());
+                bgColor);
         if (template.texture() != null) {
             VertexConsumer texture = buffers.getBuffer(ScreenRenderType.screen(template.texture()));
             Vec3 textureLift = outward.normalize().scale(0.004D);
@@ -258,7 +271,8 @@ public final class CeilingDisplayRenderer implements BlockEntityRenderer<Ceiling
                 (length - 0.12D) / logicalWidth, (slopeLength - 0.12D) / 84.0D);
         poseStack.pushPose();
         poseStack.mulPose(basis);
-        renderTrafficContent(display, side, template, values, logicalWidth, 84, poseStack, buffers);
+        renderTrafficContent(display, side, template, values, horizontal.normalize(),
+                logicalWidth, 84, poseStack, buffers);
         renderOverlay(display, side, logicalWidth, 84, poseStack, buffers);
         poseStack.popPose();
     }
@@ -271,12 +285,14 @@ public final class CeilingDisplayRenderer implements BlockEntityRenderer<Ceiling
         if (display.overlayTemplateId(side).isBlank() && template.textSequence().present()) {
             template = TrafficTemplateRepository.Template.BUILTIN;
         }
+        int bgColor = template.id().equals("melbourne_metro") ? 0xFF070B10
+                : template.backgroundColor();
         solidQuad(buffers.getBuffer(RenderType.textBackground()), poseStack.last().pose(),
                 doorFacePoint(bottomStart, topStart, horizontal, length, 0, 0, outward),
                 doorFacePoint(bottomStart, topStart, horizontal, length, 1, 0, outward),
                 doorFacePoint(bottomStart, topStart, horizontal, length, 1, 1, outward),
                 doorFacePoint(bottomStart, topStart, horizontal, length, 0, 1, outward),
-                template.backgroundColor());
+                bgColor);
         if (template.texture() != null) {
             Vec3 textureLift = outward.normalize().scale(0.004D);
             texturedQuad(buffers.getBuffer(ScreenRenderType.screen(template.texture())),
@@ -300,16 +316,23 @@ public final class CeilingDisplayRenderer implements BlockEntityRenderer<Ceiling
                 (length - 0.12D) / logicalWidth, (slopeLength - 0.12D) / 84.0D);
         poseStack.pushPose();
         poseStack.mulPose(transform);
-        renderTrafficContent(display, side, template, trafficValues(display, side), logicalWidth,
-                84, poseStack, buffers);
+        renderTrafficContent(display, side, template, trafficValues(display, side),
+                horizontal.normalize(), logicalWidth, 84, poseStack, buffers);
         renderOverlay(display, side, logicalWidth, 84, poseStack, buffers);
         poseStack.popPose();
     }
 
     private void renderTrafficContent(CeilingDisplayBlockEntity display, int side,
-            TrafficTemplateRepository.Template template, TrafficValues values, int logicalWidth,
-            int logicalHeight, PoseStack poseStack, MultiBufferSource buffers) {
-        if (template.layout().equals("rmp_native_v1") && template.rmpDiagram() != null) {
+            TrafficTemplateRepository.Template template, TrafficValues values, Vec3 screenRight,
+            int logicalWidth, int logicalHeight, PoseStack poseStack, MultiBufferSource buffers) {
+        String rawId = display.templateId(side) == null ? ""
+                : display.templateId(side).trim().toLowerCase(java.util.Locale.ROOT);
+        if (rawId.equals("melbourne_metro") || rawId.startsWith("melbourne_cabin")) {
+            int doorSide = MovingStructureCompat.carriageDoorSide(display.getLevel(), screenRight,
+                    values.nextStop());
+            renderMelbourneCabinCeiling(display.getLevel(), values, rawId, 0xFF279FD5,
+                    doorSide, logicalWidth, logicalHeight, poseStack, buffers);
+        } else if (template.layout().equals("rmp_native_v1") && template.rmpDiagram() != null) {
             renderRmpTraffic(display, side, template, values, logicalWidth, logicalHeight,
                     poseStack, buffers);
         } else if (template.layout().equals("script_scene_v1") && !template.scene().isEmpty()) {
@@ -319,6 +342,219 @@ public final class CeilingDisplayRenderer implements BlockEntityRenderer<Ceiling
             renderPassengerTraffic(values, logicalWidth, logicalHeight, template.textColor(),
                     template.accentColor(), poseStack, buffers);
         }
+    }
+
+    private void renderMelbourneCabinCeiling(Level level, TrafficValues values,
+            String selectedTemplate, int accentColor, int doorSide, int width, int height,
+            PoseStack poseStack, MultiBufferSource buffers) {
+        MovingStructureCompat.CarriageTrainStatus liveTrain =
+                MovingStructureCompat.carriageTrainStatus(level);
+        long etaTicks = liveTrain == null ? -1L : liveTrain.etaTicks();
+        double distance = liveTrain == null ? Double.NaN : liveTrain.distance();
+        boolean showArrivalBanner = TextDisplayRenderer.shouldShowMelbourneCabinArrivalBanner(
+                selectedTemplate, values.phase(), etaTicks, distance, level);
+        final int white = 0xFFF4F6F8;
+        final int passedColor = 0xFF8E9FAD;
+        final int darkText = 0xFF0A121A;
+        final int ruleColor = 0xFF5A6774;
+
+        if (showArrivalBanner) {
+            float margin = Math.max(4.0F, width * 0.035F);
+            float dividerX = width * 0.68F;
+            String stationText = (values.nextStop() == null || values.nextStop().isBlank())
+                    ? (values.destination() == null || values.destination().isBlank()
+                            ? "Awaiting Route" : values.destination())
+                    : values.nextStop();
+            String callout = switch (values.phase()) {
+                case ARRIVED -> "Now at";
+                case APPROACHING -> "Now arriving at";
+                case WAITING_SIGNAL -> "Held at signal";
+                case EN_ROUTE, NO_ROUTE -> "Next station";
+            };
+            float leftCenter = dividerX * 0.50F;
+            float calloutScale = 0.64F;
+            float calloutTextW = font.width(callout) * calloutScale;
+            float bubbleW = Math.min(dividerX - margin * 2.0F, calloutTextW + 10.0F);
+            float bubbleH = Math.max(9.0F, font.lineHeight * calloutScale + 4.0F);
+            float bubbleX = Math.max(margin, leftCenter - bubbleW * 0.5F);
+            float bubbleY = Math.max(4.0F, height * 0.14F);
+
+            float pillScale = 1.15F;
+            float maxPillW = Math.max(24.0F, dividerX - margin * 2.0F - 4.0F);
+            float pillW = Math.min(maxPillW,
+                    Math.max(bubbleW + 12.0F, font.width(stationText) * pillScale + 12.0F));
+            float pillH = Math.max(15.0F, Math.min(height * 0.44F,
+                    font.lineHeight * pillScale + 7.0F));
+            float pillX = Math.max(margin, leftCenter - pillW * 0.5F);
+            float pillY = bubbleY + bubbleH + 3.0F;
+
+            VertexConsumer geom = buffers.getBuffer(RenderType.textBackground());
+            Matrix4f pose = poseStack.last().pose();
+            logicalQuad(geom, pose, bubbleX, bubbleY, bubbleX + bubbleW, bubbleY + bubbleH, white);
+            logicalQuad(geom, pose, leftCenter - 2.2F, bubbleY + bubbleH,
+                    leftCenter + 2.2F, bubbleY + bubbleH + 1.2F, white);
+            logicalQuad(geom, pose, leftCenter - 1.0F, bubbleY + bubbleH + 1.2F,
+                    leftCenter + 1.0F, bubbleY + bubbleH + 2.2F, white);
+            logicalQuad(geom, pose, pillX, pillY, pillX + pillW, pillY + pillH, accentColor);
+            logicalQuad(geom, pose, dividerX - 0.5F, height * 0.14F, dividerX + 0.5F,
+                    height * 0.86F, ruleColor);
+
+            float rightX = dividerX + Math.max(4.0F, width * 0.025F);
+            float rightW = Math.max(12.0F, width - rightX - margin);
+            float doorH = Math.max(8.5F, Math.min(16.0F, pillH * 0.52F));
+            float leafW = Math.max(3.6F, doorH * 0.42F);
+            float iconY = pillY + pillH - doorH;
+            float arrowSpan = Math.min(doorH * 0.85F, Math.max(4.5F, rightW - leafW * 2.0F - 6.5F));
+            float arrowMidY = iconY + doorH * 0.5F;
+            boolean opensLeft = doorSide < 0;
+            float doorX;
+            if (opensLeft) {
+                float arrowX0 = rightX + 1.0F;
+                float arrowX1 = arrowX0 + arrowSpan;
+                doorX = arrowX1 + 4.5F;
+                if (arrowX1 > arrowX0 + 2.5F) {
+                    logicalQuad(geom, pose, arrowX0, arrowMidY - 0.8F, arrowX1, arrowMidY + 0.8F,
+                            white);
+                    logicalLine(geom, pose, arrowX0, arrowMidY, arrowX0 + 3.2F, arrowMidY - 3.0F,
+                            1.4D, white);
+                    logicalLine(geom, pose, arrowX0, arrowMidY, arrowX0 + 3.2F, arrowMidY + 3.0F,
+                            1.4D, white);
+                }
+            } else {
+                doorX = rightX + 1.0F;
+                float arrowX0 = doorX + leafW * 2.0F + 4.5F;
+                float arrowX1 = Math.min(width - margin, arrowX0 + arrowSpan);
+                if (arrowX1 > arrowX0 + 2.5F) {
+                    logicalQuad(geom, pose, arrowX0, arrowMidY - 0.8F, arrowX1, arrowMidY + 0.8F,
+                            white);
+                    logicalLine(geom, pose, arrowX1 - 3.2F, arrowMidY - 3.0F, arrowX1, arrowMidY,
+                            1.4D, white);
+                    logicalLine(geom, pose, arrowX1 - 3.2F, arrowMidY + 3.0F, arrowX1, arrowMidY,
+                            1.4D, white);
+                }
+            }
+            logicalQuad(geom, pose, doorX, iconY, doorX + leafW, iconY + doorH, white);
+            logicalQuad(geom, pose, doorX + leafW + 1.2F, iconY,
+                    doorX + leafW * 2.0F + 1.2F, iconY + doorH, white);
+
+            drawFitted(callout,
+                    bubbleX + (bubbleW - Math.min(bubbleW - 4.0F, calloutTextW)) * 0.5F,
+                    bubbleY + (bubbleH - font.lineHeight * calloutScale) * 0.5F,
+                    bubbleW - 4.0F, darkText, calloutScale, poseStack, buffers);
+            float fitPillScale = Math.min(pillScale,
+                    (pillW - 8.0F) / Math.max(1.0F, font.width(stationText)));
+            drawFitted(stationText,
+                    pillX + (pillW - Math.min(pillW - 6.0F, font.width(stationText) * fitPillScale))
+                            * 0.5F,
+                    pillY + (pillH - font.lineHeight * fitPillScale) * 0.5F,
+                    pillW - 6.0F, darkText, fitPillScale, poseStack, buffers);
+            drawFitted("Doors opening", rightX, bubbleY + 0.5F, rightW, white, 0.48F,
+                    poseStack, buffers);
+            drawFitted("this side", rightX, bubbleY + 0.5F + font.lineHeight * 0.48F + 1.2F,
+                    rightW, white, 0.48F, poseStack, buffers);
+            return;
+        }
+
+        // Linear Route Strip (Image 2)
+        float margin = Math.max(5.0F, width * 0.04F);
+        float lineY = height * 0.55F;
+        float footerRuleY = height * 0.72F;
+        List<String> stops = new ArrayList<>();
+        for (String s : values.upcomingStops()) {
+            if (!TextDisplayRenderer.isSkippedStopEntry(s)) {
+                String clean = TextDisplayRenderer.stripSkippedPrefix(s);
+                if (!clean.isBlank()) stops.add(clean);
+            }
+        }
+        if (stops.isEmpty()) {
+            if (!values.nextStop().isBlank()) stops.add(values.nextStop());
+            if (!values.destination().isBlank()
+                    && (stops.isEmpty() || !stops.getLast().equalsIgnoreCase(values.destination()))) {
+                stops.add(values.destination());
+            }
+        }
+        if (stops.isEmpty()) {
+            stops.add("Station 1");
+            stops.add("Station 2");
+        }
+        int activeIdx = 0;
+        for (int i = 0; i < stops.size(); i++) {
+            if (stops.get(i).equalsIgnoreCase(values.nextStop())) {
+                activeIdx = i;
+                break;
+            }
+        }
+        int maxVisible = width >= 260 ? 9 : width >= 170 ? 6 : 4;
+        if (stops.size() > maxVisible) {
+            int start = Math.max(0, Math.min(activeIdx - 1, stops.size() - maxVisible));
+            stops = new ArrayList<>(stops.subList(start, start + maxVisible));
+            activeIdx = Math.max(0, activeIdx - start);
+        }
+
+        float lineStartX = margin + 4.0F;
+        float lineEndX = width - margin - 10.0F;
+        VertexConsumer geom = buffers.getBuffer(RenderType.textBackground());
+        Matrix4f pose = poseStack.last().pose();
+        logicalQuad(geom, pose, lineStartX, lineY - 1.4F, lineEndX, lineY + 1.4F, accentColor);
+        logicalQuad(geom, pose, margin, footerRuleY - 0.5F, width - margin, footerRuleY + 0.3F,
+                ruleColor);
+
+        int n = stops.size();
+        float spanX = Math.max(10.0F, lineEndX - lineStartX - 8.0F);
+        float stepX = n <= 1 ? 0.0F : spanX / (n - 1);
+        for (int i = 0; i < n; i++) {
+            float nodeX = n == 1 ? (lineStartX + lineEndX) * 0.5F : (lineStartX + 4.0F + i * stepX);
+            if (i == activeIdx) {
+                logicalQuad(geom, pose, nodeX - 2.0F, lineY - 2.0F, nodeX + 2.0F, lineY + 2.0F,
+                        white);
+            } else {
+                logicalQuad(geom, pose, nodeX - 0.8F, lineY - 2.2F, nodeX + 0.8F, lineY + 2.2F,
+                        i < activeIdx ? passedColor : white);
+            }
+        }
+
+        float labelScale = 0.52F;
+        float maxLabelLen = Math.max(24.0F, lineY * 1.45F);
+        for (int i = 0; i < n; i++) {
+            float nodeX = n == 1 ? (lineStartX + lineEndX) * 0.5F : (lineStartX + 4.0F + i * stepX);
+            String name = stops.get(i);
+            float scale = Math.min(labelScale, maxLabelLen / Math.max(1.0F, font.width(name)));
+            float textW = font.width(name) * scale;
+            float textH = font.lineHeight * scale;
+            poseStack.pushPose();
+            poseStack.translate(nodeX, lineY - 4.0F, 0.015D);
+            poseStack.mulPose(Axis.ZP.rotationDegrees(-28.0F));
+            if (i == activeIdx) {
+                logicalQuad(buffers.getBuffer(RenderType.textBackground()), poseStack.last().pose(),
+                        -1.5F, -textH - 1.0F, textW + 3.0F, 1.2F, accentColor);
+                poseStack.pushPose();
+                poseStack.translate(0.5D, -textH, 0.01D);
+                poseStack.scale(scale, scale, 1.0F);
+                font.drawInBatch(Component.literal(name).getVisualOrderText(), 0.0F, 0.0F,
+                        darkText, false, poseStack.last().pose(), buffers,
+                        Font.DisplayMode.POLYGON_OFFSET, 0, LightTexture.FULL_BRIGHT);
+                poseStack.popPose();
+            } else {
+                poseStack.translate(0.0D, -textH, 0.01D);
+                poseStack.scale(scale, scale, 1.0F);
+                font.drawInBatch(Component.literal(name).getVisualOrderText(), 0.0F, 0.0F,
+                        i < activeIdx ? passedColor : white, false, poseStack.last().pose(),
+                        buffers, Font.DisplayMode.POLYGON_OFFSET, 0, LightTexture.FULL_BRIGHT);
+            }
+            poseStack.popPose();
+        }
+
+        String term = values.destination().isBlank() ? stops.getLast() : values.destination();
+        String patternLabel = TextDisplayRenderer.melbourneStoppingPatternLabel(
+                values.upcomingStops(), values.serviceType(), values.line(), false, false);
+        if (patternLabel.equalsIgnoreCase("Stops all stations")) {
+            patternLabel = "Stopping all stations";
+        }
+        String footer = "To " + term + "     " + patternLabel;
+        float footerScale = 0.64F;
+        float footerY = footerRuleY + (height - footerRuleY - font.lineHeight * footerScale) * 0.5F;
+        drawFitted(footer, margin, footerY, width - margin * 2.0F, white, footerScale,
+                poseStack, buffers);
     }
 
     private void renderOverlay(CeilingDisplayBlockEntity display, int side, int width, int height,
@@ -626,8 +862,12 @@ public final class CeilingDisplayRenderer implements BlockEntityRenderer<Ceiling
     private static java.util.List<String> mappedStops(String templateId,
             java.util.List<String> stops) {
         if (stops == null || stops.isEmpty()) return java.util.List.of();
-        return stops.stream().map(stop -> TrafficTemplateRepository.mappedStationName(
-                templateId, stop)).toList();
+        return stops.stream().map(stop -> {
+            boolean skipped = TextDisplayRenderer.isSkippedStopEntry(stop);
+            String mapped = TrafficTemplateRepository.mappedStationName(
+                    templateId, TextDisplayRenderer.stripSkippedPrefix(stop));
+            return skipped && !mapped.isBlank() ? "~" + mapped : mapped;
+        }).toList();
     }
 
     /** A value entered in the editor is an explicit override; the Create schedule is the fallback. */
@@ -773,8 +1013,12 @@ public final class CeilingDisplayRenderer implements BlockEntityRenderer<Ceiling
             footer = values.notice();
             footerColor = 0xFFFFD166;
         } else if (!values.upcomingStops().isEmpty()) {
+            java.util.List<String> stoppingOnly = values.upcomingStops().stream()
+                    .filter(s -> !TextDisplayRenderer.isSkippedStopEntry(s))
+                    .map(TextDisplayRenderer::stripSkippedPrefix)
+                    .filter(s -> !s.isBlank()).toList();
             footer = Component.translatable("screen.minescreen.carriage_info.stops_at",
-                    String.join(" · ", values.upcomingStops())).getString();
+                    String.join(" · ", stoppingOnly)).getString();
         } else {
             footer = values.eta().isBlank() ? values.status()
                     : values.eta() + "  " + values.status();
@@ -811,7 +1055,11 @@ public final class CeilingDisplayRenderer implements BlockEntityRenderer<Ceiling
                 .replace("${service_type}", values.serviceType())
                 .replace("${carriage_count}", Integer.toString(values.carriageCount()))
                 .replace("${carriage_number}", Integer.toString(values.carriageNumber()))
-                .replace("${upcoming_stops}", String.join(" · ", values.upcomingStops()))
+                .replace("${upcoming_stops}", String.join(" · ",
+                        values.upcomingStops().stream()
+                                .filter(s -> !TextDisplayRenderer.isSkippedStopEntry(s))
+                                .map(TextDisplayRenderer::stripSkippedPrefix)
+                                .filter(s -> !s.isBlank()).toList()))
                 .replace("${direction}", directionLabel(values))
                 .replace("${arrival_time}", expectedArrivalTime(display.getLevel(), values));
         if (expanded.contains("${create_station}") || expanded.contains("${station_binding}")) {
